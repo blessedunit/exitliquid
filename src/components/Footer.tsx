@@ -1,7 +1,7 @@
 import Link from "next/link";
 import styles from "./Footer.module.css";
 import { FOOT_REF, MAIN, TAGLINE } from "@/lib/nav";
-import { X_URL, X_HANDLE, X_LIVE, VIBE_APP } from "@/lib/config";
+import { X_URL, X_HANDLE, X_LIVE, VIBE_APP, GITHUB_URL } from "@/lib/config";
 
 // Footer (spec §1.11): two short rows, no illustration, no link columns.
 // [EXIT]Liquidity  See who's in line before you buy.     Tokens Door Wallets Devs Market   Methodology Status FAQ Manifesto   X ↗ vibe/vibe ↗
@@ -35,6 +35,7 @@ export default function Footer() {
                 <a href={X_URL} target="_blank" rel="noreferrer" aria-label={`X · @${X_HANDLE}`}>X ↗</a>
               </li>
             )}
+            <li><a href={GITHUB_URL} target="_blank" rel="noreferrer" aria-label="Source code on GitHub">GitHub ↗</a></li>
             <li><a href={VIBE_APP} target="_blank" rel="noreferrer">vibe/vibe ↗</a></li>
           </ul>
         </nav>

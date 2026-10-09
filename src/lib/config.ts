@@ -23,6 +23,8 @@ export const PUBLIC_SITE_URL = "https://exitliquid.fun";
 export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || PUBLIC_SITE_URL;
 export const X_HANDLE = process.env.NEXT_PUBLIC_X_HANDLE || "exitliqfun";
 export const X_URL = `https://x.com/${X_HANDLE}`;
+/** the public source code (README, changelog, MIT) */
+export const GITHUB_URL = "https://github.com/blessedunit/exitliquid";
 // Hide X links until the account really exists (set NEXT_PUBLIC_X_LIVE=1).
 export const X_LIVE = process.env.NEXT_PUBLIC_X_LIVE === "1";
 export const VIBE_X = "vibevibefun";

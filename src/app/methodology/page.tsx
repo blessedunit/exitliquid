@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PageHead from "@/components/PageHead";
 import SectionTabs from "@/components/ui/SectionTabs";
-import { DISCLAIMER, EXPLORER, PUBLIC_RPC_URL, VIBE_APP } from "@/lib/config";
+import { DISCLAIMER, EXPLORER, GITHUB_URL, PUBLIC_RPC_URL, VIBE_APP } from "@/lib/config";
 
 import { earlyIndex } from "@/lib/earlyIndex";
 import styles from "./methodology.module.css";
@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: "How Exit Liquidity computes Line Health, sniper and farm labels, bundles, exit math, real volume and graduation ETA. Signals, not verdicts.",
 };
 
-// the Early Index numbers below come from the file the hourly index job rewrites every hour (lib/earlyIndex):
+// the Early Index numbers below come from the file ops/early_index.py rewrites every hour (lib/earlyIndex):
 // the page is regenerated at most every 10 min instead of being frozen at build time
 export const revalidate = 600;
 
@@ -160,6 +160,7 @@ export default function MethodologyPage() {
                 </tbody>
               </table>
               <p>The vibe/vibe indexer can lag the chain by minutes to hours; curve progress is therefore read on-chain. Live freshness of every source: <Link href="/status">Status</Link>.</p>
+              <p>The site is open source: every formula on this page is in the code on <a href={GITHUB_URL} target="_blank" rel="noreferrer">GitHub ↗</a>.</p>
             </Card>
 
 
