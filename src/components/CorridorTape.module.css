@@ -1,0 +1,69 @@
+/* Trade tape: the table under the corridor (spec 1.7). No outer frame: a block head (h3 + ghost action), label-style
+   column heads, 44 px hairline rows, mono numbers right-aligned; only BUY / SELL carry colour. */
+.tape { padding: 0; min-width: 0; display: flex; flex-direction: column; background: transparent; border: 0; color: var(--t1); }
+.head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-height: 0; margin: 0 0 12px; padding: 0; }
+.head h2 { margin: 0; font: 600 15px/22px var(--f-ui); letter-spacing: 0; text-transform: none; color: var(--t1); }
+.hint { color: var(--t3); font: 400 12px/16px var(--f-ui); text-align: right; }
+
+/* its own scroll once expanded, but idle until the pointer settles on it (CorridorTape.tsx) */
+.scroll { max-height: none; overflow-y: hidden; scrollbar-gutter: stable; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; overscroll-behavior: auto; position: relative; }
+.scrollAll { max-height: calc(36px + 44px * 12); }
+.scrollAll.scrollOn { overflow-y: auto; scrollbar-color: var(--t3) transparent; }
+.row {
+  display: grid; grid-template-columns: 44px 48px minmax(168px, 1fr) 104px 96px 64px; align-items: center; column-gap: 16px;
+  width: 100%; min-height: 44px; padding: 0; border: 0; border-bottom: 1px solid var(--line); background: transparent;
+  color: var(--t1); font: 400 13px/1 var(--f-num); font-variant-numeric: tabular-nums; text-align: left; white-space: nowrap; cursor: pointer;
+}
+.row > span { overflow: hidden; text-overflow: ellipsis; }
+button.row:hover { background: var(--s1); }
+button.row:focus-visible { outline: 2px solid var(--exit); outline-offset: -2px; }
+.cols { position: sticky; top: 0; z-index: 1; min-height: 36px; padding-bottom: 0; background: var(--bg); cursor: default; font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
+.num { text-align: right; }
+.side { font: 500 12px/1 var(--f-ui); letter-spacing: 0; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.t2 { color: var(--t2); }
+.t3 { color: var(--t3); }
+.wallet { color: var(--t1); }
+/* one tag per row (dev / sniper / farm / gifted), after the profile icon that sits over the address: square + word */
+.tag { display: inline-flex; align-items: center; gap: 6px; margin-left: 28px; vertical-align: 0; color: var(--t2); font: 400 12px/1 var(--f-ui); font-style: normal; letter-spacing: 0; text-transform: none; }
+.tag::before { content: ""; width: 6px; height: 6px; flex: none; background: var(--sq, var(--t3)); }
+.tag_bad { --sq: var(--down); }
+.tag_warn { --sq: var(--t1); }
+.tag_plain { --sq: var(--t3); }
+.dustBtn { margin-left: auto; padding: 0; background: none; border: 0; color: var(--t3); font: 400 12px/16px var(--f-ui); cursor: pointer; white-space: nowrap; }
+.dustBtn:hover { color: var(--t1); }
+.dustBtn:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+/* the wallet profile icon, laid over the wallet cell right after the short address (11 mono chars ~ 88 px) */
+.rowWrap { position: relative; }
+.rowWrap:hover > button.row:not(.active) { background: var(--s1); }
+.prof { position: absolute; top: 50%; transform: translateY(-50%); left: calc(44px + 16px + 48px + 16px + 92px); }
+.fresh { background: var(--exit-a10); }
+.active, button.row.active:hover { background: var(--s2); box-shadow: inset 2px 0 0 var(--exit); }
+
+.empty { margin: 0; padding: 24px 0; color: var(--t3); font: 400 13px/20px var(--f-ui); }
+.skeleton { display: grid; }
+.skeleton i { display: block; height: 44px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, var(--s2) 0 40%, transparent 40%); background-size: 100% 12px; background-repeat: no-repeat; background-position: 0 center; animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+
+/* "Show all N trades" / "Load older": ghost buttons under the table, left-aligned */
+.historyEnd, .loadOlder { display: inline-flex; align-items: center; width: auto; min-height: 40px; margin: 8px 0 0 -12px; padding: 0 12px; border: 0; background: transparent; color: var(--t3); font: 500 14px/20px var(--f-ui); letter-spacing: 0; text-transform: none; text-align: left; }
+.historyEnd { margin-left: 0; padding: 0; font-weight: 400; font-size: 12px; }
+.loadOlder { cursor: pointer; color: var(--t2); }
+.loadOlder:hover { background: var(--s2); color: var(--t1); }
+.loadOlder:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+.loadOlder:disabled { cursor: progress; opacity: .7; }
+
+@media (max-width: 760px) {
+  /* touch: a flick at the tape's end carries on down the page (overscroll chains), so it can scroll freely */
+  .scrollAll { max-height: calc(36px + 48px * 10); overflow-y: auto; }
+  .row { grid-template-columns: 36px 40px minmax(0, 1fr) auto; column-gap: 12px; min-height: 48px; }
+  .hideM { display: none; }
+  /* the tap hint is said by the section lead on phones */
+  .hint { display: none; }
+  .tag { margin-left: 30px; }
+  .prof { left: calc(36px + 12px + 40px + 12px + 90px); }
+  .loadOlder { min-height: 44px; }
+  .dustBtn { display: inline-flex; align-items: center; min-height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) { .skeleton i { animation: none; } }

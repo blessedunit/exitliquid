@@ -1,0 +1,26 @@
+/* Top holders: the analytics block shell and the quiet row of analytics.module.css (rank · wallet + tags · meter + share),
+   plus what only this list has: a pickable row (opens the ticket), the explorer arrow and the "checking" mark.
+   One tag look for the whole site: a 6 px square + text ("One funder A" in red, like the summary chip). */
+.panel { min-width: 0; }
+
+.row { position: relative; }
+.addr { display: inline-flex; align-items: center; min-height: 32px; padding: 0; background: transparent; border: 0; color: var(--t1); font: 400 13px/1.2 var(--f-num); text-decoration: none; white-space: nowrap; cursor: pointer; }
+.addr:hover { color: var(--exit); }
+.addr:focus-visible, .ext:focus-visible, .devLink:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+/* rows that open the wallet's ticket on this page: the address is a button, the explorer a small arrow beside it */
+.pickable { cursor: pointer; }
+.pickable:hover { background: var(--s1); }
+.picked, .pickable.picked:hover { background: var(--s2); box-shadow: inset 2px 0 0 var(--exit); }
+.picked .addr { color: var(--exit); }
+.addrCell { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.ext { display: inline-flex; align-items: center; justify-content: center; min-width: 24px; min-height: 32px; color: var(--t3); text-decoration: none; font: 400 12px/1 var(--f-num); }
+.ext:hover { color: var(--t1); }
+.devLink { display: inline-flex; align-items: center; min-height: 32px; color: var(--t2); font: 400 12px/16px var(--f-ui); text-decoration: none; white-space: nowrap; }
+.devLink:hover { color: var(--t1); }
+.wait { color: var(--t3); font: 400 12px/1 var(--f-ui); }
+
+@media (max-width: 760px) {
+  .addr { min-height: 44px; }
+  .ext { min-width: 40px; min-height: 44px; }
+  .devLink { min-height: 40px; }
+}

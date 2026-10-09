@@ -1,0 +1,30 @@
+/* Share: a ghost button and a three-item menu under it (the menu is a panel: --s1, 1px --line-2, no shadow) */
+details.share { position: relative; flex: 0 0 auto; }
+.share > summary { list-style: none; }
+.share > summary::-webkit-details-marker { display: none; }
+.share > summary svg { flex: none; }
+
+.btn {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px;
+  background: transparent; border: 0; color: var(--t2); cursor: pointer;
+  font: 500 14px/20px var(--f-ui); letter-spacing: 0; text-transform: none; white-space: nowrap;
+}
+.btn:hover, .share[open] > .btn { color: var(--t1); background: var(--s2); }
+.share > summary:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+
+.menu {
+  position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; display: grid; min-width: 200px;
+  background: var(--s1); border: 1px solid var(--line-2);
+}
+.menu > a, .menu > button {
+  display: flex; align-items: center; min-height: 40px; padding: 0 12px; border: 0; background: transparent;
+  color: var(--t1); font: 400 14px/20px var(--f-ui); letter-spacing: 0; text-align: left; text-decoration: none; cursor: pointer;
+}
+.menu > a:hover, .menu > a:focus-visible, .menu > button:hover, .menu > button:focus-visible { background: var(--s2); outline: none; text-decoration: none; }
+.menu > button:disabled { color: var(--t3); cursor: progress; }
+.err { margin: 0; padding: 8px 12px; color: var(--down); font: 400 12px/16px var(--f-ui); }
+
+@media (max-width: 760px) {
+  .menu { min-width: 220px; }
+  .btn { min-height: 44px; }
+}

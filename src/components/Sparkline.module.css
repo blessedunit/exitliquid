@@ -1,0 +1,14 @@
+.sp { display: block; width: 56px; height: 16px; flex: none; overflow: visible; }
+.sp polyline { stroke: var(--t3); }
+/* charts arrive after the rows: they fade in instead of popping */
+.sp polyline { animation: spIn .5s ease-out both; }
+@keyframes spIn { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .sp polyline { animation: none; } }
+.up polyline { stroke: var(--up); }
+.down polyline { stroke: var(--down); }
+.flat polyline { stroke: var(--t3); }
+.base { fill: var(--line-2); }
+.none { fill: var(--t3); opacity: .5; }
+.wait { animation: spwait 1.2s steps(2) infinite; }
+@keyframes spwait { 50% { opacity: .45; } }
+@media (prefers-reduced-motion: reduce) { .wait { animation: none; } }

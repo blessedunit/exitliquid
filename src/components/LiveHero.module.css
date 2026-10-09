@@ -1,0 +1,147 @@
+/* The line page ($EXIT on /exit, /line/<token>): header, SummaryBar, sticky section tabs, then the sections
+   Line (corridor + tape | ticket), Risk, Holders, Selling, Dev. Spec 3.2: no boxes but the corridor stage and the
+   ticket; sections on one 64 px beat with a hairline on top; h2 + one meta lead per section. */
+.hero { padding-top: 48px; padding-bottom: 96px; }
+
+/* ---------- buttons (spec 1.5): primary / secondary / ghost, one height, sentence case ---------- */
+.btnP, .btnS, .btnG {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 18px;
+  font: 600 14px/20px var(--f-ui); letter-spacing: 0; text-transform: none; text-decoration: none !important; white-space: nowrap;
+  border: 0; background: transparent; cursor: pointer;
+}
+.btnP { background: var(--exit); color: var(--exit-ink); clip-path: var(--notch); }
+.btnP:hover { background: var(--exit-hot, #5ceb9c); color: var(--exit-ink); }
+.btnS { color: var(--t1); font-weight: 500; border: 1px solid var(--line-2); }
+.btnS:hover { border-color: var(--t3); color: var(--t1); }
+.btnG { color: var(--t2); font-weight: 500; padding: 0 12px; }
+.btnG:hover { background: var(--s2); color: var(--t1); }
+/* pressed: answers at once (links too: Buy / Find me / Share are often <a>) */
+.btnP:active, .btnS:active, .btnG:active { transform: translateY(1px); }
+.btnP:active { filter: brightness(0.9); }
+.btnS:active, .btnG:active { background: var(--s2); color: var(--t1); }
+.btnP:focus-visible, .btnS:focus-visible, .btnG:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; clip-path: none; }
+
+/* in-app browser note */
+.inApp { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 24px; padding: 8px 0; border-bottom: 1px solid var(--line); color: var(--t2); font: 400 13px/20px var(--f-ui); }
+
+/* share: the trigger is a ghost button (ShareCard draws the menu) */
+details.share { position: relative; flex: 0 0 auto; }
+.share > summary { list-style: none; }
+.share > summary::-webkit-details-marker { display: none; }
+
+.acc { color: var(--exit) !important; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+.t3 { color: var(--t3); }
+
+.note { margin: 16px 0 0; color: var(--t2); font: 400 13px/20px var(--f-ui); }
+
+/* ---------- corridor: the one framed stage, full container width, door on the right ---------- */
+.corr { position: relative; }
+.stage {
+  position: relative; height: 160px; overflow: hidden; border: 1px solid var(--line);
+  /* the SVG's own bands (340 units tall), continued to the left edge so the corridor reads full width */
+  background: linear-gradient(180deg,
+    #101c17 0 15.9%, #1a3022 15.9% 17.9%, #0f1c16 17.9%, #0b1712 64.7%, #263d2c 64.7% 66.2%,
+    #09140e 66.2% 80.6%, #4ccc7a 80.6% 81.8%, #14301f 81.8% 85.3%, #0b1510 85.3%, #050a07 100%);
+}
+.corridorBox { position: absolute; inset: 0; display: flex; justify-content: flex-end; }
+/* Corridor.tsx sizes itself with an inline aspect-ratio; pin both sides so the door hugs the right edge.
+   The box is full width from the first paint (no layout shift when the stage is measured). */
+.corridorBox > div { flex: none; width: 100%; height: 160px; max-height: none !important; }
+
+.shadowCrowd { position: absolute; right: 190px; bottom: 19.4%; display: flex; align-items: flex-end; gap: 8px; pointer-events: none; }
+.shadowCrowd img { height: 48px; width: auto; filter: brightness(0) invert(.25); opacity: .5; animation: shadowPulse 1.4s steps(2) infinite; }
+@keyframes shadowPulse { 50% { opacity: .25; } }
+
+/* under the stage: the range on the left, paging arrows on the right (ghost, 40 px) */
+.corrFoot { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 4px 0 0; }
+.range { color: var(--t2); font: 400 13px/20px var(--f-num); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lineMeta { font-family: var(--f-ui); }
+.pager { display: inline-flex; gap: 4px; margin-left: auto; flex: none; }
+.arrow {
+  display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0;
+  background: transparent; color: var(--t1); border: 0; font: 400 18px/1 var(--f-ui); cursor: pointer;
+}
+.arrow:hover:not(:disabled) { background: var(--s2); }
+.arrow:disabled { color: var(--t3); opacity: .5; cursor: default; }
+.arrow:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+.arrow:active:not(:disabled) { color: var(--exit); transform: translateY(1px); }
+
+.youLine { margin: 0 0 8px; color: var(--t1); font: 400 13px/20px var(--f-num); }
+
+/* ---------- tape | ticket ---------- */
+.grid2 { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 32px; align-items: start; margin-top: 24px; }
+.tapeCol { min-width: 0; }
+.side { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.side > * { flex: 0 0 auto; }
+.grid2.solo { grid-template-columns: minmax(0, 1fr); }
+.passSlot { scroll-margin: 120px; display: flex; flex-direction: column; }
+
+/* ---------- sections: hairline on top, h2 + one meta lead, then blocks in two columns ---------- */
+.tabs { margin-top: 48px; }
+.sec { margin-top: var(--sec-gap, 64px); padding-top: 32px; border-top: 1px solid var(--line); min-width: 0; scroll-margin-top: calc(var(--hdr-h) + 48px); }
+.tabs + .sec { margin-top: 0; padding-top: 0; border-top: 0; }
+.secHead { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 24px; }
+.secHead h2 { margin: 0; font: 600 20px/28px var(--f-ui); letter-spacing: 0; text-transform: none; color: var(--t1); }
+.secHead p { margin: 0; color: var(--t3); font: 400 13px/20px var(--f-ui); }
+/* blocks: two columns at 1100+, air between them, no frames */
+.cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 48px 48px; align-items: start; }
+.cards > * { min-width: 0; }
+/* a lone block (its partner isn't on this page) takes the full row */
+.cards > :only-child { grid-column: 1 / -1; }
+/* a full-width block under the two columns (Risk: the first 20 buyers) */
+.cardsRow { margin-top: 48px; min-width: 0; }
+
+/* phones: the buy button one thumb away (hidden above 760 px) */
+.stickyCta { display: none; }
+/* phones only: the quiet Buy / Find pair under the KPIs (desktop keeps them in the header) */
+.phoneActions { display: none; }
+
+@media (max-width: 1100px) {
+  .grid2 { grid-template-columns: minmax(0, 1fr) 320px; }
+  .cards { grid-template-columns: minmax(0, 1fr); row-gap: 48px; }
+}
+
+/* ---------- phones ---------- */
+@media (max-width: 760px) {
+  .hero { padding-top: 24px; padding-bottom: 72px; }
+  .btnP, .btnS, .btnG { min-height: 44px; }
+  /* the header keeps only Share; the signal (grade + summary) is the first thing under the name */
+  .wideOnly { display: none !important; }
+  details.share { flex: 0 0 auto; align-self: flex-start; margin-left: -12px; }
+  .phoneActions { display: flex; align-items: center; gap: 8px; margin-top: 24px; }
+  .phoneActions > :first-child { flex: 1 1 0; }
+  .corr { margin-left: calc(-1 * var(--gut)); margin-right: calc(-1 * var(--gut)); }
+  .stage { height: 120px; border-left: 0; border-right: 0; }
+  .corridorBox > div { height: 120px; }
+  .corrFoot { padding: 0 var(--gut); }
+  .shadowCrowd { right: 90px; gap: 6px; }
+  .shadowCrowd img { height: 38px; }
+  .shadowCrowd img:nth-child(n + 5) { display: none; }
+  .range { font-size: 12px; }
+  .arrow { width: 44px; height: 44px; }
+  .tabs { margin-top: 32px; }
+  .sec { padding-top: 24px; }
+  .secHead { margin-bottom: 20px; }
+  .secHead p { flex-basis: 100%; }
+  .grid2 { grid-template-columns: 1fr; gap: 24px; margin-top: 16px; }
+  /* phones: an open ticket above the tape, so the tape isn't pushed two screens down */
+  .side { display: contents; }
+  .side > * { order: -1; min-width: 0; }
+  .passSlot > * { height: auto; }
+  .stickyCta {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: flex; gap: 8px;
+    padding: 8px var(--gut) calc(8px + env(safe-area-inset-bottom)); background: rgba(10, 12, 11, .96); border-top: 1px solid var(--line);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+    transform: translateY(110%); transition: transform .2s ease;
+  }
+  .stickyCta > * { flex: 1 1 0; }
+  .stickyOn { transform: none; }
+}
+/* corridor zooms in at 700 px (Corridor.tsx): 600 x 340 view */
+
+@media (prefers-reduced-motion: reduce) {
+  .shadowCrowd img { animation: none; }
+  .stickyCta { transition: none; }
+}

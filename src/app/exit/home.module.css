@@ -1,0 +1,39 @@
+/* /exit below the hero: the four rules and the cast. Air + hairlines, one heading size, numbers in mono green. */
+.sec { padding: var(--sp-8) 0; border-top: 1px solid var(--line); }
+
+.h2 { margin: 0 0 var(--sp-6); font: 600 20px/28px var(--f-ui); color: var(--t1); text-wrap: balance; }
+.h3 { margin: var(--sp-3) 0 var(--sp-2); font: 600 15px/22px var(--f-ui); color: var(--t1); text-wrap: balance; }
+.num { font: 400 13px/16px var(--f-num); font-variant-numeric: tabular-nums; color: var(--exit); }
+
+/* rules: four columns, no frames */
+.cols4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-6); margin: 0; padding: 0; list-style: none; }
+.item { min-width: 0; }
+.item p { margin: 0; color: var(--t2); font: 400 14px/22px var(--f-ui); }
+.fine { margin: var(--sp-7) 0 0; color: var(--t3); font: 400 13px/20px var(--f-ui); }
+.fine a { color: var(--t1); text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, var(--t1) 40%, transparent); text-underline-offset: 3px; }
+.fine a:hover { color: var(--exit); text-decoration-color: var(--exit); }
+
+/* ranks: the pixel moment, five sprites on one floor */
+.ranks { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--sp-5); margin: 0; padding: 0; list-style: none; overflow-x: clip; }
+.rank { display: grid; gap: 4px; align-content: start; min-width: 0; }
+/* one floor for the whole row: each column's line runs on through the gap, the row's edge clips it */
+.rankPic { position: relative; display: flex; align-items: flex-end; height: 84px; margin-bottom: var(--sp-3); }
+.rankPic::after { content: ""; position: absolute; left: 0; right: calc(-1 * var(--sp-5)); bottom: 0; height: 1px; background: var(--line-2); }
+.rankPic img { image-rendering: pixelated; }
+.rank .num { color: var(--t3); font-size: 12px; }
+.rank b { font: 600 15px/22px var(--f-ui); color: var(--t1); }
+.req { font: 400 13px/20px var(--f-num); color: var(--t2); font-variant-numeric: tabular-nums; }
+
+@media (max-width: 1000px) {
+  .cols4 { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: var(--sp-6); }
+  .ranks { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: var(--sp-6); }
+}
+@media (max-width: 760px) {
+  .sec { padding: var(--sp-7) 0; }
+  .cols4 { grid-template-columns: 1fr; gap: var(--sp-5); }
+  .item { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: var(--sp-3); }
+  .item .num { grid-row: span 2; padding-top: 5px; }
+  .item .h3 { margin-top: 0; }
+  .ranks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rankPic { height: 64px; }
+}

@@ -1,0 +1,63 @@
+/* Ticket: one of the few framed things on the page (spec 1.4 panel): --s1, 1px hairline, no inner strips.
+   Head = h3 + close, then who (sprite, wallet, place), a 2-col stat list, the receipt, two links. */
+.empty { display: flex; align-items: center; gap: 12px; padding: 12px 0; color: var(--t3); font: 400 13px/20px var(--f-ui); }
+.empty p { margin: 0; }
+.emptySprite { height: 40px; width: auto; flex: none; opacity: .6; image-rendering: pixelated; }
+
+.pass { padding: 0; background: var(--s1); border: 1px solid var(--line); color: var(--t1); min-width: 0; }
+.head { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 4px 4px 0 20px; }
+.head h2 { margin: 0; font: 600 15px/22px var(--f-ui); letter-spacing: 0; text-transform: none; color: var(--t1); }
+.close { width: 40px; height: 40px; border: 0; background: transparent; color: var(--t2); font: 400 22px/1 var(--f-ui); cursor: pointer; }
+.close:hover { background: var(--s2); color: var(--t1); }
+.close:focus-visible, .copy:focus-visible, .address:focus-visible, .foot a:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+
+.who { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 8px 20px 12px; }
+.sprite { display: grid; place-items: end center; width: 44px; height: 56px; overflow: hidden; }
+.sprite img { max-height: 56px; width: auto; image-rendering: pixelated; }
+.whoText { display: grid; gap: 4px; min-width: 0; }
+.walletRow { display: flex; align-items: center; gap: 4px; }
+.address { color: var(--t1); font: 400 14px/1 var(--f-num); text-decoration: none; white-space: nowrap; }
+.address:hover { color: var(--exit); text-decoration: none; }
+.copy { display: grid; place-items: center; width: 28px; height: 28px; border: 0; background: transparent; color: var(--t3); cursor: pointer; }
+.copy:hover { color: var(--t1); background: var(--s2); }
+.rank { color: var(--t3); font: 400 12px/16px var(--f-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.place { display: grid; gap: 4px; justify-items: end; }
+.place span, .kvs dt { font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
+.place b { font: 400 22px/28px var(--f-num); font-variant-numeric: tabular-nums; color: var(--exit); white-space: nowrap; }
+.place small { font-size: 12px; color: var(--t3); }
+.lineNote { margin: 0; padding: 0 20px 16px; color: var(--t2); font: 400 13px/20px var(--f-ui); }
+
+.kvs { display: grid; grid-template-columns: 1fr 1fr; gap: 16px 20px; margin: 0 20px; padding: 16px 0; border-top: 1px solid var(--line); }
+.kvs > div { display: grid; gap: 4px; min-width: 0; }
+.kvs dd { margin: 0; font: 400 16px/22px var(--f-num); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.kvs .wideKv { grid-column: 1 / -1; }
+.kvs > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
+/* PnL: muted when zero/unknown, green up, red down; $ and % in small text below */
+.kvs .pnl { color: var(--t2); }
+.kvs .pnl small { display: flex; flex-wrap: wrap; column-gap: 8px; margin-top: 2px; font: 400 12px/16px var(--f-num); color: var(--t3); }
+.kvs .pnl small span { white-space: nowrap; }
+.kvs .pnl.up { color: var(--exit); }
+.kvs .pnl.down { color: var(--down); }
+.kvs .pnl.up small, .kvs .pnl.down small { color: inherit; opacity: .75; }
+.acc { color: var(--exit); }
+
+.receipt { display: grid; gap: 8px; margin: 0 20px; padding: 16px 0; border-top: 1px solid var(--line); }
+.receiptHead { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font: 400 13px/20px var(--f-ui); }
+.receiptHead span { color: var(--t1); font-weight: 500; }
+.receiptHead time { color: var(--t3); font-size: 12px; }
+.receiptLine { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+.receiptLine span { color: var(--t3); font: 400 13px/20px var(--f-ui); }
+.receiptLine b { font: 400 13px/20px var(--f-num); font-variant-numeric: tabular-nums; text-align: right; overflow-wrap: anywhere; }
+
+.foot { display: flex; justify-content: space-between; gap: 12px; margin: 0 20px; padding: 4px 0 8px; border-top: 1px solid var(--line); }
+.foot a { display: inline-flex; align-items: center; min-height: 40px; color: var(--t2); font: 500 14px/20px var(--f-ui); letter-spacing: 0; text-transform: none; text-decoration: none; }
+.foot a:hover { color: var(--t1); text-decoration: none; }
+
+@media (max-width: 760px) {
+  .copy { width: 40px; height: 40px; }
+  .foot a { min-height: 44px; }
+  .head { padding-left: 16px; }
+  .who { padding: 8px 16px 12px; }
+  .lineNote { padding: 0 16px 16px; }
+  .kvs, .receipt, .foot { margin: 0 16px; }
+}

@@ -1,0 +1,22 @@
+.ml { display: block; width: 100%; height: 26px; overflow: hidden; }
+.floor { fill: var(--line-2); }
+.floorEmpty { stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 2 3; }
+.spot { fill: none; stroke: var(--t3); stroke-width: 1; stroke-dasharray: 2 2; opacity: .45; }
+.step { fill: var(--exit); }
+.note { fill: var(--t3); font: 400 9px/1 var(--f-num); letter-spacing: .02em; }
+/* the door: dark frame on a grey rim, a green EXIT plate with white pixel letters */
+.plate { fill: var(--exit-sign); }
+.plateTxt { fill: #fff; }
+.frame { fill: var(--t3); }
+.frameOpen { fill: var(--exit); }
+.inside { fill: var(--bg); }
+.fill { fill: var(--exit); opacity: .55; }
+.fillOpen { fill: var(--exit); opacity: .85; }
+.knob { fill: var(--t2); }
+.spark { fill: var(--exit); animation: twinkle 1.6s ease-in-out infinite; }
+.newTxt { fill: var(--exit); font: 700 7px/1 var(--f-px); letter-spacing: .06em; }
+/* idle: every other person hops a pixel now and then (CSS only; none under reduced motion) */
+.bob { animation: bob .9s cubic-bezier(.45,0,.55,1) infinite alternate; will-change: transform; }
+@keyframes bob { from { transform: translateY(0); } to { transform: translateY(-1px); } }
+@keyframes twinkle { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .bob, .spark { animation: none; } }

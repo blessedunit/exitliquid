@@ -1,0 +1,30 @@
+/* Footer (spec §1.11): on the page background, one hairline, two rows, 14px --t2. */
+.footer { border-top: 1px solid var(--line); color: var(--t3); font: 400 14px/20px var(--f-ui); }
+.footer > .row {
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-4) var(--sp-7);
+  padding-top: var(--sp-6); padding-bottom: var(--sp-3);
+}
+
+.brand { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; min-width: 0; }
+.mark { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; text-decoration: none !important; }
+.plate { font: 700 11px/1 var(--f-px); letter-spacing: 0.1em; color: var(--exit-ink); background: var(--exit); padding: 5px 6px 4px; clip-path: var(--notch); }
+.liq { font: 500 14px/1 var(--f-ui); color: var(--t1); }
+.tag { color: var(--t2); }
+
+.links { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-6); }
+.links ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0 var(--sp-4); }
+.links a {
+  display: inline-flex; align-items: center; min-height: 32px; min-width: 40px; /* short ones ("X ↗") stay a real target */
+  color: var(--t2); text-decoration: none !important; transition: color 0.12s;
+}
+.links a:hover { color: var(--t1); }
+
+.footer > .fine { padding-bottom: var(--sp-6); font: 400 12px/16px var(--f-ui); color: var(--t3); }
+
+@media (max-width: 760px) {
+
+  .footer > .row { flex-direction: column; align-items: flex-start; gap: var(--sp-4); padding-top: var(--sp-5); }
+  .brand { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .links { flex-direction: column; gap: var(--sp-2); }
+  .links a { min-height: 40px; }
+}

@@ -1,0 +1,9 @@
+/* the roadmap plan (/map): one frame, no grid, no room boxes, no glow */
+.frame { margin: 0; }
+.svg { display: block; width: 100%; height: auto; background: var(--s1); border: 1px solid var(--line); }
+.px { image-rendering: pixelated; }
+.note { margin-top: 12px; font: 400 12px/16px var(--f-ui); color: var(--t3); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sw { width: 24px; height: 0; border-top: 2px dashed var(--exit); display: inline-block; }
+
+/* phones: the room list under the plan carries the content; the plan would be unreadable at this scale */
+@media (max-width: 760px) { .frame { display: none; } }

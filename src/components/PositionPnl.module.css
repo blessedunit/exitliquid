@@ -1,0 +1,8 @@
+/* Testnet estimate, deliberately quiet: the value in --t2, only the % change carries a muted up/down tint.
+   It must never read louder than the place in line (points are the score, this is an illustration). */
+.pnl { display: grid; align-content: center; gap: 6px; min-width: 0; padding-top: 10px; border-top: 1px solid var(--line); font-family: var(--f-num); }
+.pnl > span { color: var(--t3); font: 500 11px/1 var(--f-num); letter-spacing: .08em; text-transform: uppercase; }
+.pnl strong { color: var(--t2); font: 500 14px/1.3 var(--f-num); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.pnl small { color: var(--t3); font: 400 12px/1.4 var(--f-ui); overflow-wrap: anywhere; }
+.positive .chg { color: color-mix(in srgb, var(--up) 70%, var(--t3)); }
+.negative .chg { color: color-mix(in srgb, var(--down) 70%, var(--t3)); }

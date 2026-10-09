@@ -1,0 +1,5 @@
+/* the profile icon next to an address: quiet until hovered, a full touch target on phones */
+.link { display: inline-flex; align-items: center; justify-content: center; flex: none; min-width: 26px; min-height: 28px; color: var(--t3); text-decoration: none; }
+.link:hover { color: var(--t1); }
+.link:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+@media (max-width: 760px) { .link { min-width: 36px; min-height: 36px; } }

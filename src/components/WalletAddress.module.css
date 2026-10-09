@@ -1,0 +1,15 @@
+/* address + copy: Mono --t1, the copy control is a ghost icon */
+.wallet { display: inline-flex !important; align-items: center; gap: 4px; white-space: nowrap; }
+.wallet a { color: var(--t1); font: 400 14px/20px var(--f-num); text-decoration: none; text-transform: none; }
+.wallet a:hover, .wallet a:focus-visible { color: var(--exit); text-decoration: none; }
+.wallet button {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: 0 0 auto; padding: 0;
+  border: 0; background: transparent; color: var(--t3); cursor: pointer;
+}
+.wallet button:hover, .wallet button:focus-visible { background: var(--s2); color: var(--t1); }
+@media (max-width: 760px) { .wallet button { width: 40px; height: 40px; } }
+
+/* copy glyph: the pixel icon everywhere */
+.glyphPhone, .glyphDesk { font-style: normal; }
+.glyphPhone { display: none; }
+.glyphDesk { display: block; }

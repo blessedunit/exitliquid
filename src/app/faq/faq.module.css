@@ -1,0 +1,26 @@
+/* FAQ & glossary: one 720px column. Glossary as a definition list, questions as h3 + answer. No accordions. */
+
+.gloss { padding: 0; margin: 0 0 var(--sp-8); }
+.secTitle { margin: 0 0 var(--sp-5); font: 600 20px/28px var(--f-ui); color: var(--t1); }
+
+/* glossary: term on the left, one line on the right (stacked on phones) */
+.terms { margin: 0; display: grid; }
+.termRow { display: grid; grid-template-columns: 168px minmax(0, 1fr); gap: 4px var(--sp-5); padding: 14px 0; border-top: 1px solid var(--line); scroll-margin-top: calc(var(--hdr-h) + var(--sp-5)); }
+.termRow:target { box-shadow: inset 2px 0 0 var(--exit); padding-left: var(--sp-3); }
+.termRow dt { font: 600 14px/22px var(--f-ui); color: var(--t1); }
+.termRow dd { margin: 0; font: 400 14px/22px var(--f-ui); color: var(--t2); }
+.more { color: var(--t2); font: 500 13px/1 var(--f-ui); white-space: nowrap; }
+.more:hover { color: var(--t1); text-decoration: none; }
+@media (max-width: 760px) { .termRow { grid-template-columns: 1fr; } }
+
+/* questions */
+.list { display: grid; }
+.item { padding: var(--sp-5) 0; border-top: 1px solid var(--line); }
+.q { margin: 0 0 var(--sp-2); font: 600 15px/22px var(--f-ui); color: var(--t1); text-wrap: balance; }
+.a { color: var(--t2); font: 400 15px/24px var(--f-ui); max-width: 68ch; text-wrap: pretty; }
+.a a { color: var(--t1); text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, var(--t1) 40%, transparent); text-underline-offset: 3px; }
+.a a:hover { color: var(--exit); text-decoration-color: var(--exit); }
+
+.legal { margin-top: 0; padding-top: var(--sp-5); border-top: 1px solid var(--line); }
+.legalHead { margin: 0; font: 400 11px/16px var(--f-num); letter-spacing: 0.06em; text-transform: uppercase; color: var(--t3); }
+.legal p { margin: var(--sp-2) 0 0; color: var(--t3); font: 400 13px/20px var(--f-ui); }

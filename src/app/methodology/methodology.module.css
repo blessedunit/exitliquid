@@ -1,0 +1,66 @@
+/* /methodology: sticky contents on the left, plain h2 + prose sections on the right. No panels. */
+.layout { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: var(--sp-8); align-items: start; margin-top: var(--sp-2); }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; gap: var(--sp-5); } }
+
+.toc { position: sticky; top: calc(var(--hdr-h) + var(--sp-5)); display: grid; gap: var(--sp-3); }
+.tocHead { margin: 0; color: var(--t3); font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; }
+.toc ol { list-style: none; margin: 0; padding: 0; display: grid; }
+.toc a { display: block; padding: 5px 0; color: var(--t2); font: 400 13px/20px var(--f-ui); text-decoration: none; }
+.toc a:hover { color: var(--t1); text-decoration: none; }
+.statusLink { margin-top: var(--sp-2); color: var(--t2) !important; font: 500 13px/20px var(--f-ui) !important; }
+.statusLink:hover { color: var(--t1) !important; text-decoration: none; }
+/* phones: the side contents hide; a sticky SectionTabs row takes over */
+nav.phoneTabs { display: none; }
+@media (max-width: 900px) {
+  .toc { display: none; }
+  nav.phoneTabs { display: block; }
+}
+
+/* "In 30 seconds": the whole page in one paragraph, the only rule accent on the page */
+.tldr { margin: 0 0 var(--sp-3); padding: 2px 0 2px var(--sp-5); border-left: 2px solid var(--exit); }
+.tldr p { margin: 0; color: var(--t2); font: 400 16px/26px var(--f-ui); text-wrap: pretty; }
+.tldr b { color: var(--t1); font-weight: 500; }
+.tldr .tldrHead { margin-bottom: var(--sp-2); color: var(--t3); font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; }
+
+.main { display: grid; gap: 0; min-width: 0; max-width: 720px; }
+.card { padding: var(--sp-7) 0 0; margin-top: var(--sp-7); border-top: 1px solid var(--line); scroll-margin-top: calc(var(--hdr-h) + var(--sp-4)); }
+.tldr + .card { margin-top: var(--sp-6); }
+@media (max-width: 900px) { .card { padding-top: var(--sp-6); margin-top: var(--sp-6); } }
+.head { display: flex; align-items: baseline; gap: var(--sp-3); margin-bottom: var(--sp-4); }
+.head h2 { margin: 0; font: 600 20px/28px var(--f-ui); color: var(--t1); }
+.anchor { color: var(--t3); font: 400 16px/1 var(--f-num); text-decoration: none; opacity: 0; }
+.card:hover .anchor, .anchor:focus-visible { opacity: 1; }
+.anchor:hover { color: var(--exit); text-decoration: none; }
+.body { display: grid; gap: var(--sp-4); color: var(--t2); font: 400 15px/24px var(--f-ui); }
+.body p { margin: 0; }
+.body b { color: var(--t1); font-weight: 600; }
+.body a { color: var(--t1); text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, var(--t1) 40%, transparent); text-underline-offset: 3px; }
+.body a:hover { color: var(--exit); text-decoration-color: var(--exit); }
+.dim { color: var(--t3) !important; font-size: 13px !important; line-height: 20px !important; }
+.mono { font-family: var(--f-num); color: var(--t1); }
+
+.list { margin: 0; padding: 0 0 0 18px; display: grid; gap: 8px; }
+.list li::marker { color: var(--t3); }
+
+.formula {
+  margin: 0; padding: var(--sp-4); overflow-x: auto; background: var(--s1); border: 1px solid var(--line);
+  color: var(--t1); font: 400 13px/20px var(--f-num); white-space: pre;
+}
+
+.table { width: 100%; border-collapse: collapse; font: 400 14px/20px var(--f-ui); }
+.table th { text-align: left; padding: 0 var(--sp-3) var(--sp-2) 0; color: var(--t3); font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid var(--line); }
+.table td { padding: 12px var(--sp-3) 12px 0; border-bottom: 1px solid var(--line); vertical-align: top; color: var(--t2); }
+.table th:last-child, .table td:last-child { padding-right: 0; }
+.table td:first-child { color: var(--t1); }
+.num { font-family: var(--f-num); font-size: 13px; color: var(--t1); white-space: nowrap; }
+@media (max-width: 560px) { .num { white-space: normal; } }
+.src { display: block; margin-top: 2px; color: var(--t3); font: 400 12px/16px var(--f-num); overflow-wrap: anywhere; }
+
+/* grade scale: letters only, two accents */
+.scale { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-5); font: 400 14px/20px var(--f-num); color: var(--t2); }
+.scale span { white-space: nowrap; }
+.gA, .gB { color: var(--exit); }
+.gC { color: var(--t1); }
+.gD, .gF { color: var(--down); }
+
+.legal { margin: var(--sp-7) 0 0; padding-top: var(--sp-5); border-top: 1px solid var(--line); color: var(--t3); font: 400 13px/20px var(--f-ui); }

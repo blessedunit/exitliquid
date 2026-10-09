@@ -1,0 +1,23 @@
+/* /kit: the cast on one floor, plain download links, a flat palette list. No cards. */
+.cast { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); gap: var(--sp-6) var(--sp-5); --cols: 4; }
+.slot { display: grid; justify-items: start; gap: 6px; align-content: start; min-width: 0; }
+.tag { font: 400 11px/16px var(--f-num); letter-spacing: 0.06em; color: var(--t3); text-transform: uppercase; }
+.stage { height: 180px; display: flex; align-items: flex-end; justify-content: center; margin: 4px 0 var(--sp-3); width: 100%; background: var(--s1); border-bottom: 1px solid var(--line-2); }
+.blurb { font: 400 13px/20px var(--f-ui); color: var(--t3); min-height: 40px; }
+.dl { display: flex; gap: var(--sp-4); margin-top: var(--sp-2); }
+.dl a { display: inline-flex; align-items: center; min-height: 32px; color: var(--t2); font: 400 13px/20px var(--f-num); text-decoration: none; }
+.dl a:hover { color: var(--t1); text-decoration: underline; text-decoration-color: var(--exit); text-underline-offset: 3px; }
+.size { font-size: 12px; color: var(--t3); }
+.note { color: var(--t3); font: 400 13px/20px var(--f-ui); margin: var(--sp-5) 0 0; max-width: 640px; }
+.note b { color: var(--t2); font-weight: 500; }
+.colors { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-5) var(--sp-6); }
+.color { display: flex; align-items: center; gap: 14px; }
+.cname { font: 500 14px/20px var(--f-ui); color: var(--t1); }
+.swatch { width: 40px; height: 40px; border: 1px solid var(--line-2); flex: 0 0 auto; }
+@media (max-width: 959px) { .cast { --cols: 3; } }
+@media (max-width: 700px) {
+  .cast { --cols: 2; gap: var(--sp-5) var(--sp-4); }
+  .stage { height: 160px; }
+  .dl a { min-height: 40px; }
+  .colors { grid-template-columns: 1fr 1fr; }
+}

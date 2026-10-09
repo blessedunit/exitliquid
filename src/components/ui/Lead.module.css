@@ -1,0 +1,2 @@
+.lead { margin: 0; max-width: 68ch; font: 400 16px/24px var(--f-ui); color: var(--t2); text-wrap: pretty; }
+@media (max-width: 760px) { .lead { font-size: 15px; line-height: 22px; } }

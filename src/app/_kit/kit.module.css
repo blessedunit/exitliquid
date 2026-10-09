@@ -1,0 +1,116 @@
+/* Shared look for the content pages (door, state, status, methodology, board, hall, faq, how-it-works, kit, map).
+   No boxes by default: air + one hairline. Grotesk sentence case for
+   titles, Departure Mono for numbers; uppercase tracked mono only for column heads and stat labels. */
+
+/* ---------- type ---------- */
+.h2 { margin: 0; font: 600 20px/28px var(--f-ui); letter-spacing: -0.005em; color: var(--t1); text-wrap: balance; }
+.h3 { margin: 0; font: 600 15px/22px var(--f-ui); color: var(--t1); }
+.meta { margin: 0; font: 400 12px/16px var(--f-ui); color: var(--t3); }
+.lead { margin: 0; font: 400 15px/24px var(--f-ui); color: var(--t2); max-width: 68ch; text-wrap: pretty; }
+.label { font: 400 11px/16px var(--f-num); letter-spacing: 0.06em; text-transform: uppercase; color: var(--t3); }
+.num { font-family: var(--f-num); font-variant-numeric: tabular-nums; }
+.up { color: var(--exit); }
+.down { color: var(--down); }
+.dim { color: var(--t3); }
+
+/* ---------- page sections: 64 between (phone 48), one hairline on top ---------- */
+.sec { display: grid; gap: var(--sp-5); padding: var(--sp-7) 0 0; margin: var(--sp-7) 0 0; border-top: 1px solid var(--line); }
+.sec:first-child { margin-top: 0; }
+.secHead { display: grid; gap: var(--sp-2); }
+.secHeadRow { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--sp-2) var(--sp-4); }
+@media (max-width: 760px) {
+  .sec { padding-top: var(--sp-6); margin-top: var(--sp-6); }
+}
+
+/* ---------- block head: h3 left, meta right, one line ---------- */
+.blockHead { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px var(--sp-4); margin: 0 0 var(--sp-3); }
+.blockHead .meta { text-align: right; }
+@media (max-width: 560px) { .blockHead .meta { text-align: left; } }
+
+/* ---------- stats row: label over a mono number, no cells ---------- */
+.stats { display: grid; grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); gap: var(--sp-5) var(--sp-6); margin: 0; }
+.stat { display: grid; gap: 6px; align-content: start; min-width: 0; margin: 0; }
+.stat dt, .stat > .label { order: 0; }
+.stat dd { margin: 0; }
+.statValue { font: 400 22px/28px var(--f-num); font-variant-numeric: tabular-nums; color: var(--t1); overflow-wrap: anywhere; }
+.statValueXl { font: 400 32px/36px var(--f-num); font-variant-numeric: tabular-nums; color: var(--t1); letter-spacing: -0.01em; }
+.statSub { font: 400 12px/16px var(--f-ui); color: var(--t3); }
+@media (max-width: 900px) { .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .statValueXl { font-size: 26px; line-height: 30px; } }
+
+/* the hero number of a block */
+.big { display: grid; gap: 4px; margin: 0 0 var(--sp-5); }
+.bigValue { font: 400 40px/44px var(--f-num); font-variant-numeric: tabular-nums; color: var(--t1); letter-spacing: -0.01em; }
+.bigText { font: 400 14px/20px var(--f-ui); color: var(--t2); max-width: 52ch; }
+@media (max-width: 560px) { .bigValue { font-size: 32px; line-height: 36px; } }
+
+/* ---------- status word: 6px square + plain text, no box ---------- */
+.st { display: inline-flex; align-items: center; gap: 8px; font: 400 13px/20px var(--f-ui); color: var(--t2); white-space: nowrap; }
+.st::before { content: ""; flex: none; width: 6px; height: 6px; background: var(--t3); }
+.stGood::before { background: var(--exit); }
+.stBad::before { background: var(--down); }
+.stMid::before { background: var(--t1); }
+.stWarn::before { background: var(--warn); }
+.stWarn { color: var(--t1); }
+.stLive::before { background: var(--exit); animation: kitBlink 1.4s steps(1) infinite; }
+@keyframes kitBlink { 50% { opacity: 0.25; } }
+
+/* ---------- tables: no outer border, label heads, 48px rows, hairlines ---------- */
+.table { width: 100%; border-collapse: collapse; font: 400 14px/20px var(--f-ui); color: var(--t1); }
+.table th {
+  padding: 0 var(--sp-3) var(--sp-2); text-align: left; vertical-align: bottom; white-space: nowrap;
+  font: 400 11px/16px var(--f-num); letter-spacing: 0.06em; text-transform: uppercase; color: var(--t3);
+  border-bottom: 1px solid var(--line);
+}
+.table td { height: 48px; padding: var(--sp-2) var(--sp-3); border-bottom: 1px solid var(--line); vertical-align: middle; }
+.table th:first-child, .table td:first-child { padding-left: 0; }
+.table th:last-child, .table td:last-child { padding-right: 0; }
+.table .r { text-align: right; }
+.table td.n { font-family: var(--f-num); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.table tbody tr.link { cursor: pointer; }
+.table tbody tr:hover td { background: var(--s2); }
+
+/* ---------- disclosure (stalled, how this is read) ---------- */
+.fold { border-top: 1px solid var(--line); }
+.fold:last-child { border-bottom: 1px solid var(--line); }
+.fold > summary {
+  display: flex; align-items: center; gap: var(--sp-3); min-height: 48px; cursor: pointer; list-style: none;
+  font: 500 14px/20px var(--f-ui); color: var(--t2);
+}
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::after { content: "+"; margin-left: auto; font: 400 16px/1 var(--f-num); color: var(--t3); }
+.fold[open] > summary::after { content: "−"; }
+.fold > summary:hover { color: var(--t1); }
+.foldBody { padding: 0 0 var(--sp-5); display: grid; gap: var(--sp-3); color: var(--t2); font: 400 14px/22px var(--f-ui); }
+.foldBody ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; max-width: 80ch; }
+.foldBody li::marker { color: var(--t3); }
+
+/* ---------- ghost button (Show all, Refresh) ---------- */
+.ghost {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; margin-left: -12px;
+  background: transparent; border: 0; cursor: pointer; justify-self: start;
+  font: 500 14px/20px var(--f-ui); color: var(--t2); text-decoration: none !important;
+}
+.ghost:hover { color: var(--t1); background: var(--s2); }
+@media (max-width: 760px) { .ghost { min-height: 44px; } }
+
+/* ---------- loading ---------- */
+.skel { display: block; height: 14px; width: 60%; background: var(--s2); animation: kitPulse 1.2s ease-in-out infinite; }
+.skelRow { display: flex; align-items: center; gap: var(--sp-4); height: 48px; border-bottom: 1px solid var(--line); }
+@keyframes kitPulse { 50% { opacity: 0.45; } }
+
+/* ---------- prose pages (FAQ, How it works, Methodology) ---------- */
+.prose { max-width: 720px; }
+.doc { display: grid; gap: var(--sp-3); color: var(--t2); font: 400 15px/24px var(--f-ui); }
+.doc p { margin: 0; }
+.doc b, .doc strong { color: var(--t1); font-weight: 600; }
+.doc ol, .doc ul { margin: 0; padding-left: 20px; display: grid; gap: 8px; }
+.doc li::marker { color: var(--t3); }
+.code { font-family: var(--f-num); font-size: 13px; color: var(--t1); }
+/* one inline link style on every page: text colour, 1px underline at 40%, green on hover */
+.doc a, .link { color: var(--t1); text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, var(--t1) 40%, transparent); text-underline-offset: 3px; }
+.doc a:hover, .link:hover { color: var(--exit); text-decoration-color: var(--exit); }
+
+@media (prefers-reduced-motion: reduce) {
+  .stLive::before, .skel { animation: none; }
+}

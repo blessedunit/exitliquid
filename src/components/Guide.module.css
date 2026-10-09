@@ -1,0 +1,32 @@
+/* Guide modal v2: 440px, --s1, 1px --line-2, mono title bar; bottom sheet on phones. */
+.backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: var(--sp4); background: rgba(0, 0, 0, 0.7); }
+.box { width: min(440px, 100%); max-height: calc(100dvh - 32px); overflow-y: auto; background: var(--s1); border: 1px solid var(--line-2); padding: 0 var(--sp4) var(--sp4); text-align: left; }
+.bar {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp3); min-height: 44px;
+  margin: 0 calc(-1 * var(--sp4)) var(--sp4); padding: 0 var(--sp1) 0 var(--sp4); border-bottom: 1px solid var(--line);
+  color: var(--t1); font: 500 12px/1 var(--f-num); letter-spacing: 0.08em; text-transform: uppercase;
+}
+.step { margin-left: 8px; color: var(--t3); }
+.bar button { width: 40px; height: 40px; display: grid; place-items: center; background: none; border: 0; color: var(--t2); font: 400 20px/1 var(--f-num); cursor: pointer; }
+.bar button:hover { color: var(--t1); background: var(--s2); }
+/* one still picture per slide: the guide only moves when a button is pressed */
+.stage { display: flex; align-items: flex-end; justify-content: center; gap: 4px; height: 120px; margin: 0 0 var(--sp4); border-bottom: 1px solid var(--exit-a20); overflow: hidden; }
+.sprite { display: block; }
+.door { width: 48px; height: 92px; margin-left: 12px; border: 2px solid #cfd6d1; border-bottom: 0; background: linear-gradient(90deg, #123b25 0 50%, #0e2d1c 50%); display: flex; justify-content: center; }
+.door b { margin-top: -26px; height: fit-content; padding: 4px 7px 3px; background: var(--exit-sign); color: #fff; font: 700 10px/1 var(--f-px); letter-spacing: 0.12em; box-shadow: 0 0 18px rgba(61, 220, 132, 0.35); }
+.title { font: 600 14px/1.3 var(--f-num); letter-spacing: 0.06em; text-transform: uppercase; color: var(--t1); margin: 0 0 var(--sp2); }
+.text { color: var(--t2); font-size: 14px; line-height: 1.55; margin: 0 0 var(--sp4); min-height: 88px; }
+.dots { display: flex; gap: 2px; margin-bottom: var(--sp4); }
+.dots button { flex: 1; height: 24px; padding: 0; border: 0; background: transparent; cursor: pointer; position: relative; }
+.dots button::before { content: ""; position: absolute; left: 0; right: 0; top: calc(50% - 2px); height: 4px; background: var(--s3); }
+.dots .dotOn::before { background: var(--exit); }
+.nav { display: flex; justify-content: space-between; gap: var(--sp2); }
+.nav > * { flex: 1; justify-content: center; }
+@media (max-width: 760px) {
+  .backdrop { place-items: end stretch; padding: 0; }
+  .box { width: 100%; max-height: 90dvh; border-left: 0; border-right: 0; border-bottom: 0; padding-bottom: calc(var(--sp4) + env(safe-area-inset-bottom, 0px)); }
+  .text { min-height: 110px; }
+  .dots button { height: 40px; }
+}
+.box:focus { outline: none; }
+.bar button:focus-visible, .dots button:focus-visible { outline: 2px solid var(--exit); outline-offset: -2px; }

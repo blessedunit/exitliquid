@@ -1,0 +1,21 @@
+/* sticky section tabs: Grotesk 14 sentence case, --t2; active --t1 + 2px accent underline */
+.bar {
+  position: sticky; top: var(--hdr-h); z-index: 40;
+  background: var(--bg); /* solid: no text through the bar */
+  border-bottom: 1px solid var(--line);
+  margin: 0 0 var(--sp-6);
+}
+.row { display: flex; gap: var(--sp-5); height: 48px; align-items: stretch; }
+.tab {
+  display: inline-flex; align-items: center; flex: none; padding: 0;
+  font: 500 14px/20px var(--f-ui); letter-spacing: 0; text-transform: none;
+  color: var(--t2); white-space: nowrap; text-decoration: none !important;
+  box-shadow: inset 0 -2px 0 transparent; transition: color 0.12s, box-shadow 0.12s;
+}
+.tab:hover { color: var(--t1); }
+.tab[aria-current="location"] { color: var(--t1); box-shadow: inset 0 -2px 0 var(--exit); }
+/* phones: the tabs scroll with the page (at most two pinned layers: the header + the line's bottom bar) */
+@media (max-width: 760px) {
+  .bar { position: relative; top: auto; margin-left: calc(-1 * var(--gut)); margin-right: calc(-1 * var(--gut)); }
+  .row { padding: 0 var(--gut); gap: var(--sp-5); height: 44px; }
+}

@@ -1,0 +1,18 @@
+/* One hint line: 13px --t2, arrows and dots --t3, ghost link to the guide. */
+.strip { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp2) var(--sp4); padding: var(--sp3) 0; }
+.hint { flex: 1 1 auto; min-width: 0; margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; color: var(--t2); font: 400 13px/1.5 var(--f-ui); }
+.hint i { font-style: normal; color: var(--t3); }
+.hint b { font: 600 12.5px/1 var(--f-num); color: var(--exit); }
+.sep { color: var(--t3); }
+.guideBtn { flex: 0 0 auto; margin-left: -8px; }
+.guideBtn::after { content: "→"; color: var(--t3); }
+/* optional actions before the hint line (wide screens) */
+.lead { display: flex; gap: var(--sp2); align-items: center; flex: 0 0 auto; }
+.lead > * { white-space: nowrap; }
+@media (max-width: 760px) {
+  .strip { flex-direction: column; align-items: flex-start; gap: var(--sp1); padding-bottom: 0; }
+  .hint { flex-direction: column; gap: 2px; }
+  .sep { display: none; }
+  .lead { width: 100%; }
+  .lead > * { flex: 1 1 0; }
+}

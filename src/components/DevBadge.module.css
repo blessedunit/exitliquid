@@ -1,0 +1,36 @@
+/* Dev reputation: a chip (6px square + text, no frame); serial launchers get the --t1 medium square */
+.wrap { position: relative; display: inline-flex; min-width: 0; }
+.badge { display: inline-flex; align-items: center; gap: 8px; min-height: 28px; max-width: 100%; padding: 0 6px 0 0; background: transparent; border: 0; color: var(--t2); font: 400 13px/20px var(--f-ui); text-align: left; cursor: pointer; }
+.badge::before { content: ""; width: 6px; height: 6px; flex: none; background: var(--t3); }
+.badge:hover { color: var(--t1); }
+.badge:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+.serial { color: var(--t1); }
+.serial::before { background: var(--t1); }
+.caret { color: var(--t2); font-size: 12px; line-height: 1; }
+
+.pop { position: absolute; top: calc(100% + 6px); left: 0; z-index: 30; width: min(340px, calc(100vw - 2 * var(--gut))); background: var(--s1); border: 1px solid var(--line-2); }
+.popHead { display: flex; align-items: center; justify-content: space-between; gap: var(--sp2); min-height: 40px; padding: 0 var(--sp3); border-bottom: 1px solid var(--line); font: 400 12px/16px var(--f-ui); color: var(--t3); }
+.addr { display: inline-flex; align-items: center; min-height: 32px; color: var(--t2); font-family: var(--f-num); text-decoration: none; }
+.addr:hover { color: var(--t1); }
+.addr:focus-visible, .sym:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+.list { list-style: none; margin: 0; padding: 0; max-height: 264px; overflow-y: auto; }
+.list li { display: grid; grid-template-columns: minmax(0, 1fr) auto 84px; align-items: center; gap: var(--sp2); min-height: 36px; padding: 0 var(--sp3); border-bottom: 1px solid var(--line); font: 400 13px/1 var(--f-num); font-variant-numeric: tabular-nums; }
+.list li:last-child { border-bottom: 0; }
+.here { background: var(--s2); }
+.sym { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--t1); text-decoration: none; font-family: var(--f-ui); font-weight: 600; font-size: 13px; }
+a.sym:hover { color: var(--exit); }
+.age { color: var(--t3); }
+.door { color: var(--t2); text-align: right; }
+.grad { color: var(--exit); text-align: right; }
+.passport { display: flex; align-items: center; min-height: 40px; padding: 0 var(--sp3); border-top: 1px solid var(--line); color: var(--t1); font: 500 13px/20px var(--f-ui); text-decoration: none; }
+.passport:hover { color: var(--exit); background: var(--s2); }
+.passport:focus-visible { outline: 2px solid var(--exit); outline-offset: -2px; }
+.note { margin: 0; padding: var(--sp2) var(--sp3) var(--sp3); border-top: 1px solid var(--line); color: var(--t3); font: 400 12px/1.45 var(--f-ui); }
+
+@media (max-width: 760px) {
+  .badge { min-height: 40px; }
+  .list li { min-height: 44px; }
+  /* phones: a sheet pinned to the bottom, above the sticky Buy bar (z 40) */
+  .pop { position: fixed; top: auto; left: 16px; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 45; width: auto; }
+  .list { max-height: 50vh; }
+}

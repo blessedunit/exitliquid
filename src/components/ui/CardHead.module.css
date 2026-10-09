@@ -1,0 +1,18 @@
+/* block head (spec §1.4): h3 left + meta right on one line, no strip, no rule */
+.head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-1) var(--sp-4); flex-wrap: wrap;
+  min-height: 22px; margin: 0 0 var(--sp-3);
+}
+.title {
+  display: inline-flex; align-items: center; margin: 0;
+  font: 600 15px/22px var(--f-ui); letter-spacing: 0; text-transform: none; color: var(--t1);
+}
+h2.title { font-size: 20px; line-height: 28px; }
+.right { display: inline-flex; align-items: center; gap: var(--sp-2); margin-left: auto; min-width: 0; }
+.meta { font: 400 12px/16px var(--f-ui); color: var(--t3); }
+/* old footer strip: now a quiet meta line under the block, no rule */
+.foot {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2); flex-wrap: wrap;
+  margin-top: var(--sp-3); padding: 0; border: 0;
+  font: 400 12px/16px var(--f-ui); color: var(--t3);
+}

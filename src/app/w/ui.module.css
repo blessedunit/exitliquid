@@ -1,0 +1,19 @@
+/* TagTip popover (see ui.tsx). Matches components/ui/Term's popover. */
+
+/* Term */
+.term { position: relative; display: inline; }
+.termText { cursor: help; text-decoration: underline dotted var(--t3); text-underline-offset: 3px; text-decoration-thickness: 1px; }
+.termPlain { cursor: help; }
+.termText:focus-visible, .termPlain:focus-visible, .termIcon:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+.termIcon { display: inline-flex; align-items: center; justify-content: center; margin-left: 4px; color: var(--t3); font: 400 12px/1 var(--f-ui); cursor: help; vertical-align: 0; }
+.termIcon:hover { color: var(--t1); }
+.pop {
+  position: absolute; z-index: 40; top: calc(100% + 6px); left: 0;
+  display: grid; gap: 6px; width: max-content; max-width: min(280px, calc(100vw - 16px));
+  padding: 8px 12px; background: var(--s1); border: 1px solid var(--line-2);
+  text-align: left; white-space: normal; text-transform: none; letter-spacing: 0; cursor: default;
+}
+.pop b { color: var(--t1); font: 600 13px/20px var(--f-ui); }
+.pop span { color: var(--t2); font: 400 13px/20px var(--f-ui); }
+.pop a { color: var(--t1); font: 500 13px/20px var(--f-ui); text-decoration: none; }
+.pop a:hover { color: var(--exit); }

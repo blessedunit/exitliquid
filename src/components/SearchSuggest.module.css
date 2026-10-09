@@ -1,0 +1,61 @@
+/* SearchSuggest: the box (40px header / 56px "lg" paste field) and its typeahead list */
+.box {
+  position: relative; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 8px 0 12px; margin: 0;
+  min-width: 0; background: var(--s1); border: 1px solid var(--line); color: var(--t3);
+  transition: border-color 0.12s;
+}
+.box:hover { border-color: var(--line-2); }
+.box:focus-within { border-color: var(--exit); }
+.icon { font: 400 16px/1 var(--f-ui); flex: none; }
+.box input {
+  flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: none; background: transparent;
+  color: var(--t1); font: 400 14px var(--f-ui); -webkit-appearance: none; appearance: none;
+}
+.box input::placeholder { color: var(--t3); opacity: 1; }
+.box input::-webkit-search-cancel-button { display: none; }
+.box kbd { font: 400 11px/1 var(--f-num); color: var(--t3); border: 1px solid var(--line-2); padding: 3px 6px; flex: none; }
+
+/* lg: the paste field, 56px */
+.lg { height: 56px; padding: 0 7px 0 18px; gap: 12px; background: var(--s1); border-color: var(--line-2); }
+.lg .icon { font-size: 20px; color: var(--t2); }
+.lg input { font: 400 16px var(--f-ui); }
+.go {
+  flex: none; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px;
+  background: var(--exit); color: var(--exit-ink); border: 0; cursor: pointer; clip-path: var(--notch);
+  font: 600 14px/1 var(--f-ui); letter-spacing: 0; text-transform: none; white-space: nowrap;
+}
+.go:hover { background: var(--exit-hot); }
+.go:focus-visible { clip-path: none; outline: 2px solid var(--t1); outline-offset: 1px; }
+@media (max-width: 760px) {
+  .box { height: 44px; }
+  .box input { font-size: 16px; } /* no iOS zoom */
+  .lg { height: 56px; padding-left: 12px; gap: 8px; }
+  .go { height: 44px; padding: 0 14px; }
+}
+
+/* typeahead: up to 6 rows of 48px under the box (↑ ↓ Enter Esc) */
+.sug {
+  position: absolute; z-index: 70; top: calc(100% + 4px); left: -1px; right: -1px;
+  display: grid; background: var(--s1); border: 1px solid var(--line-2);
+  max-height: min(70vh, 432px); overflow-y: auto;
+}
+.sug[hidden] { display: none; }
+.sugList { margin: 0; padding: 0; list-style: none; }
+.sugList:empty { display: none; }
+.sugRow {
+  display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 0 12px;
+  border-bottom: 1px solid var(--line); cursor: pointer; color: var(--t1);
+}
+.sugRow:last-child { border-bottom: 0; }
+.sugOn { background: var(--s2); }
+.sugNames { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.sugNames b { font: 600 14px/20px var(--f-ui); color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sugNames small { font: 400 12px/16px var(--f-ui); color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sugMono { font-family: var(--f-ui) !important; font-weight: 600 !important; }
+.sugEnd { flex: none; font: 400 13px/1 var(--f-num); font-variant-numeric: tabular-nums; color: var(--t2); }
+.tag {
+  flex: none; min-width: 44px; text-align: right;
+  font: 400 12px/16px var(--f-ui); color: var(--t3);
+}
+.sugNote { margin: 0; padding: 12px; font: 400 13px/20px var(--f-ui); color: var(--t3); }
+.sugNote:empty { display: none; }

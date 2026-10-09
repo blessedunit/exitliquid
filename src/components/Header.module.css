@@ -1,0 +1,156 @@
+/* Header (spec §1.10): one row, 56px (phone 52), solid --bg (nothing shows through), one hairline.
+   Nav = Grotesk 14/500 sentence case --t2; active --t1 + 2px --exit underline at the bar's foot. */
+.header {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+.inner { display: flex; align-items: center; gap: var(--sp-6); height: var(--hdr-h); position: relative; }
+
+/* wordmark: the green EXIT plate (Silkscreen, notch) + Liquidity */
+.brand { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; min-height: 40px; text-decoration: none !important; }
+.plate { font: 700 12px/1 var(--f-px); letter-spacing: 0.1em; color: var(--exit-ink); background: var(--exit); padding: 6px 7px 5px; clip-path: var(--notch); }
+.liq { font: 500 15px/1 var(--f-ui); letter-spacing: -0.01em; color: var(--t1); }
+.brand:hover .liq { color: var(--t1); }
+
+/* nav */
+.nav { display: flex; gap: var(--sp-5); align-self: stretch; }
+.nav a {
+  display: inline-flex; align-items: center; height: 100%; padding: 0;
+  font: 500 14px/20px var(--f-ui); letter-spacing: 0; text-transform: none;
+  color: var(--t2); white-space: nowrap; text-decoration: none !important;
+  box-shadow: inset 0 -2px 0 transparent; transition: color 0.12s, box-shadow 0.12s;
+}
+.nav a:hover { color: var(--t1); }
+.nav a[aria-current="page"] { color: var(--t1); box-shadow: inset 0 -2px 0 var(--exit); }
+
+/* search box lives in SearchSuggest.module.css; here only its place in the bar */
+.inner .search { flex: 0 1 340px; min-width: 160px; margin-left: auto; }
+/* home: hidden while the hero search is on screen (MenuCloser sets html[data-hero-search]) */
+:global(html[data-hero-search]) .inner .search { visibility: hidden; }
+
+/* right cluster: My lines · $EXIT (ghost links) */
+.links { display: flex; align-items: center; gap: var(--sp-1); flex: none; }
+.ghostLink {
+  display: inline-flex; align-items: center; height: 40px; padding: 0 10px;
+  font: 500 14px/20px var(--f-ui); color: var(--t2); white-space: nowrap; text-decoration: none !important;
+  transition: color 0.12s, background-color 0.12s;
+}
+.ghostLink:hover { color: var(--t1); background: var(--s2); }
+.ghostLink[aria-current="page"] { color: var(--t1); }
+
+/* wallet / Connect */
+.walletActions { display: flex; align-items: center; gap: var(--sp2); flex: 0 0 auto; position: relative; }
+.cta { white-space: nowrap; }
+.pts {
+  display: inline-flex; align-items: baseline; gap: 6px; height: 40px; padding: 10px 10px 0;
+  color: var(--t1); font: 400 14px/20px var(--f-num); font-variant-numeric: tabular-nums;
+  white-space: nowrap; text-decoration: none !important;
+}
+.pts small { font: 400 12px/1 var(--f-ui); color: var(--t3); }
+.pts:hover { background: var(--s2); }
+.walletMenu { position: relative; }
+.walletAddress {
+  display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px;
+  border: 1px solid var(--line-2); color: var(--t1); font: 400 13px/1 var(--f-num);
+  white-space: nowrap; cursor: pointer; list-style: none;
+}
+.walletAddress::-webkit-details-marker { display: none; }
+.walletAddress span { color: var(--t3); font: 400 11px var(--f-ui); }
+.walletMenu[open] .walletAddress, .walletAddress:hover { border-color: var(--t3); }
+.walletDropdown {
+  position: absolute; z-index: 60; top: calc(100% + 8px); right: 0; width: 248px; padding: var(--sp-4);
+  display: grid; gap: var(--sp-2); background: var(--s1); border: 1px solid var(--line-2);
+}
+.walletMenuTitle { color: var(--t3); font: 400 12px/16px var(--f-ui); }
+.walletMenuAddress { color: var(--t1); font: 400 14px/20px var(--f-num); }
+.walletMenuPts { color: var(--t2); font: 400 13px/20px var(--f-ui); }
+.walletDropdown button {
+  height: 40px; margin-top: var(--sp-1); padding: 0 12px; background: transparent; border: 1px solid var(--line-2); color: var(--t1);
+  font: 500 14px/1 var(--f-ui); text-align: left; cursor: pointer;
+}
+.walletDropdown button:hover, .walletDropdown button:focus-visible { border-color: var(--down); color: var(--down); }
+.walletMenuLink { font: 500 14px/20px var(--f-ui); color: var(--t1); padding: 6px 0; }
+.walletMenuLink:hover, .walletMenuLink:focus-visible { color: var(--exit); text-decoration: none; }
+.walletDropdown small { color: var(--t3); font: 400 12px/16px var(--f-ui); }
+.walletError {
+  position: absolute; top: calc(100% + 10px); right: 0; width: min(300px, 80vw); z-index: 5;
+  padding: 10px 12px; background: var(--s1); border: 1px solid var(--line-2); color: var(--t1); font: 13px/20px var(--f-ui);
+}
+.walletError::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 8px; background: var(--down); vertical-align: 2px; }
+.walletErrorClose { margin-left: 8px; min-width: 28px; min-height: 28px; padding: 0 6px; border: 0; background: transparent; color: var(--t2); font: 500 16px var(--f-ui); cursor: pointer; }
+.walletErrorClose:hover { color: var(--t1); }
+
+/* narrow search sheet: a ⌕ button, the panel spans the screen under the header */
+.findSheet { display: none; }
+.findSheet summary, .menu summary {
+  list-style: none; cursor: pointer; width: 40px; height: 40px; border: 0;
+  display: grid; place-items: center; color: var(--t1); font: 400 20px/1 var(--f-ui);
+}
+.findSheet summary::-webkit-details-marker, .menu summary::-webkit-details-marker { display: none; }
+.findSheet summary:hover, .findSheet[open] summary, .menu summary:hover, .menu[open] summary { background: var(--s2); }
+.findPanel {
+  position: absolute; left: 0; right: 0; top: 100%; z-index: 55;
+  padding: var(--sp-4) var(--gut) var(--sp-5); background: var(--bg); border-bottom: 1px solid var(--line);
+  display: grid; gap: var(--sp-2);
+}
+.findHint { margin: 0; font: 400 12px/16px var(--f-ui); color: var(--t3); }
+
+/* burger + sheet */
+.menu { display: none; }
+.menu summary i { display: block; width: 16px; height: 2px; background: var(--t1); box-shadow: 0 5px 0 var(--t1), 0 -5px 0 var(--t1); }
+.sheet {
+  position: absolute; top: 100%; right: 0; width: 360px; max-height: calc(100dvh - var(--hdr-h)); overflow-y: auto;
+  padding: var(--sp-2) var(--gut) var(--sp-6); background: var(--bg); border: 1px solid var(--line); border-top: 0;
+  display: flex; flex-direction: column; gap: var(--sp-6);
+}
+.sheetNav { display: flex; flex-direction: column; }
+.sheetNav a {
+  display: flex; align-items: center; min-height: 52px; border-bottom: 1px solid var(--line);
+  font: 500 17px/24px var(--f-ui); letter-spacing: -0.005em; color: var(--t2);
+  text-decoration: none !important;
+}
+.sheetNav a:hover, .sheetNav a[aria-current="page"] { color: var(--t1); }
+.sheetNav a[aria-current="page"]::after { content: ""; width: 6px; height: 6px; margin-left: 10px; background: var(--exit); }
+.sheetGroups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--sp-4); }
+.sheetGroup { display: flex; flex-direction: column; min-width: 0; }
+.groupHead { font: 400 12px/16px var(--f-ui); color: var(--t3); padding: 0 0 var(--sp-2); }
+.sheetGroup a {
+  display: flex; align-items: center; min-height: 40px; font: 400 14px/20px var(--f-ui); color: var(--t2);
+  text-decoration: none !important;
+}
+.sheetGroup a:hover, .sheetGroup a[aria-current="page"] { color: var(--t1); }
+
+/* /exit pre-launch note: one quiet meta line on the page grid, under the header (not sticky), no strip */
+.preview {
+  width: 100%; max-width: var(--maxw); margin: 0 auto; padding: 8px var(--gut);
+  color: var(--t3); font: 400 12px/16px var(--f-ui); border-bottom: 1px solid var(--line);
+}
+
+@media (max-width: 1280px) { .inner .search kbd { display: none; } }
+/* narrower desktops: the search box becomes the ⌕ button */
+@media (max-width: 1180px) {
+  .inner { gap: var(--sp-4); }
+  .inner .search { display: none; }
+  .findSheet { display: block; margin-left: auto; }
+  /* My lines · $EXIT stay a secondary group by Connect, quieter than the main nav */
+  .ghostLink { color: var(--t3); padding: 0 8px; font-size: 13px; }
+}
+/* tablets: nav and the ghost links move into the burger */
+@media (max-width: 900px) {
+  .nav, .links { display: none; }
+  .menu { display: block; }
+}
+/* phones: [EXIT] · ⌕ · Connect · ≡ */
+@media (max-width: 760px) {
+  .inner { gap: var(--sp-1); }
+  .pts { display: none; }
+  .cta, .walletAddress { min-height: 40px; height: 40px; }
+  .walletActions { margin-left: var(--sp-1); margin-right: var(--sp-1); }
+  .sheet { position: absolute; left: 0; right: 0; width: auto; height: calc(100dvh - var(--hdr-h)); max-height: none; border-left: 0; border-right: 0; }
+  .walletError { position: fixed; top: calc(var(--hdr-h) + 8px); left: 12px; right: 12px; width: auto; z-index: 50; }
+  .liq { display: none; }
+}
+@media (max-width: 360px) {
+  .walletAddress { padding: 0 8px; }
+}

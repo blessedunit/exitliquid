@@ -1,0 +1,62 @@
+/* The $EXIT boarding pass: one panel (spec oct-9 1.4: the ticket is one of the few boxed things).
+   --s1 body, 1px --line, a dashed tear line, a quiet stub with the trader sprite (the pixel moment).
+   Labels are the micro-label style, values Departure Mono; green only for the place in line. */
+.ticket {
+  display: grid; grid-template-columns: 1fr 220px; position: relative;
+  background: var(--s1); border: 1px solid var(--line);
+}
+.main { padding: var(--sp5) var(--sp6); position: relative; border-right: 1px dashed var(--line-2); min-width: 0; }
+.top { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding-bottom: var(--sp3); border-bottom: 1px solid var(--line); }
+.brand { color: var(--t3); font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; }
+.mode { color: var(--exit); font: 400 13px/16px var(--f-num); }
+.fields { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp4) var(--sp5); margin: var(--sp5) 0; }
+.field { min-width: 0; }
+.field span { display: block; margin-bottom: 4px; color: var(--t3); font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; }
+.field b { color: var(--t1); font: 400 15px/22px var(--f-num); overflow-wrap: anywhere; }
+.field b:global(.mono) { font-size: 14px; }
+.placeRow { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--sp4); padding: var(--sp5) 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.lbl { color: var(--t3); font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; }
+.place { margin-top: 6px; color: var(--exit); font: 400 clamp(44px, 7vw, 72px)/1 var(--f-num); letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.of { display: inline-block; margin-left: 10px; color: var(--t3); font: inherit; font-size: .36em; letter-spacing: 0; }
+.big2 { text-align: right; }
+.num { margin: 4px 0; color: var(--t1); font: 400 clamp(28px, 4vw, 40px)/44px var(--f-num); }
+.stub {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--sp3);
+  padding: var(--sp5) var(--sp3); background: var(--s2); color: var(--t1);
+}
+.stubArt { height: 170px; display: flex; align-items: flex-end; }
+.stubPlace { color: var(--t1); font: 400 28px/1 var(--f-num); }
+.stock { color: var(--t2); font: 400 11px/16px var(--f-num); letter-spacing: .06em; }
+.pnlRow { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp4); padding: var(--sp4) 0 0; margin: var(--sp4) 0 0; border-top: 1px solid var(--line); }
+.pnlRow > div:first-child { display: grid; align-content: start; gap: 4px; }
+.pnlRow > div:first-child span { color: var(--t3); font: 400 11px/16px var(--f-num); letter-spacing: .06em; }
+.pnlRow > div:first-child strong { color: var(--t1); font: 400 15px/22px var(--f-num); }
+.pnlRow > div:first-child small { color: var(--t3); font: 400 12px/16px var(--f-ui); }
+.barcode { width: 150px; height: 30px; margin-top: 4px; color: var(--t3); }
+.stamp, .stampNever {
+  position: absolute; left: 42%; top: 44%; transform: rotate(-8deg); pointer-events: none;
+  padding: 2px 12px; border: 2px solid; background: rgba(10, 12, 11, 0.7);
+  font: 400 clamp(18px, 2.4vw, 26px)/1.3 var(--f-num); letter-spacing: .1em;
+}
+.stamp { color: var(--down); }
+.stampNever { color: var(--t2); font-size: clamp(15px, 1.8vw, 20px); }
+.exited .place { color: var(--down); }
+
+/* the dev's pledge, on the dev's own ticket */
+.pledge { margin: var(--sp3) 0 0; padding: 8px 12px; border: 1px dashed var(--line-2); color: var(--t2); font: 400 12px/16px var(--f-num); letter-spacing: .04em; text-align: center; }
+
+@media (min-width: 761px) { .fields { grid-template-columns: 1.5fr 0.7fr 1fr 1fr; } }
+
+@media (max-width: 720px) {
+  .ticket { grid-template-columns: 1fr; }
+  .main { border-right: 0; border-bottom: 1px dashed var(--line-2); padding: var(--sp4); }
+  .fields { grid-template-columns: repeat(2, 1fr); }
+  .fields .field:first-child { grid-column: 1 / -1; }
+  .placeRow { flex-direction: column; align-items: flex-start; }
+  .big2 { text-align: left; }
+  .stub { flex-direction: row; flex-wrap: wrap; justify-content: space-around; padding: var(--sp4); }
+  .stubArt { height: auto; }
+  .stamp, .stampNever { left: auto; right: 10px; top: 51%; font-size: 15px; }
+  .brandLong { display: none; }
+  .pnlRow { grid-template-columns: 1fr; }
+}

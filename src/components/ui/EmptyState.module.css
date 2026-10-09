@@ -1,0 +1,9 @@
+.empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center;
+  min-height: 240px; padding: var(--sp-6) var(--sp-4); gap: var(--sp-2);
+}
+.boxed { background: var(--s1); border: 1px solid var(--line); }
+.sprite { display: block; height: 48px; width: auto; margin-bottom: var(--sp-2); opacity: 0.9; }
+.title { margin: 0; font: 600 15px/22px var(--f-ui); color: var(--t1); }
+.text { margin: 0; max-width: 44ch; font: 400 13px/20px var(--f-ui); color: var(--t3); text-wrap: pretty; }
+.action { margin-top: var(--sp-3); display: flex; gap: var(--sp-2); flex-wrap: wrap; justify-content: center; }

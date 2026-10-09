@@ -1,0 +1,42 @@
+/* Line health block: the reasons behind the grade (square by severity + label + points, detail under it) and the
+   first 20 buyers. The block shell (head, sub-heads, chips) comes from analytics.module.css. */
+
+.reasons { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.reason { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+/* severity square: red = high, light = medium, grey = low / info, green = good; dashed = unknown */
+.sq { width: 6px; height: 6px; margin-top: 7px; background: var(--t3); }
+.s_high .sq { background: var(--down); }
+.s_medium .sq { background: var(--t1); }
+.s_good .sq { background: var(--exit); }
+.s_unknown .sq { background: transparent; box-shadow: inset 0 0 0 1px var(--t3); }
+.rBody { display: grid; gap: 2px; min-width: 0; }
+.rLabel { margin: 0; color: var(--t1); font: 400 14px/20px var(--f-ui); }
+.s_low .rLabel, .s_info .rLabel { color: var(--t2); }
+.rDetail { margin: 0; color: var(--t3); font: 400 12px/18px var(--f-ui); }
+.pts { color: var(--t3); font: 400 13px/20px var(--f-num); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.s_high .pts { color: var(--down); }
+
+/* first 20 buyers: rank · wallet · label · holds/left */
+.bList { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.bRow { display: grid; grid-template-columns: 24px minmax(0, auto) minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 40px; border-bottom: 1px solid var(--line); font: 400 13px/1 var(--f-num); font-variant-numeric: tabular-nums; }
+.bPlace { color: var(--t3); }
+.bWho { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.bTag { display: flex; min-width: 0; }
+.addr { display: inline-flex; align-items: center; min-height: 32px; padding: 0; background: transparent; border: 0; color: var(--t1); font: inherit; white-space: nowrap; }
+button.addr { cursor: pointer; }
+button.addr:hover { color: var(--exit); }
+button.addr:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+.picked { background: var(--s2); box-shadow: inset 2px 0 0 var(--exit); }
+.picked .addr { color: var(--exit); }
+.hold { color: var(--t2); font: 400 12px/1 var(--f-ui); text-align: right; }
+.gone { color: var(--t3); font: 400 12px/1 var(--f-ui); text-align: right; }
+
+/* full width at 1100+: two balanced columns of 10 (1-10 | 11-20), read top to bottom */
+@media (min-width: 1101px) {
+  .bList { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows, 10), auto); grid-auto-flow: column; column-gap: 48px; }
+}
+
+@media (max-width: 760px) {
+  .bRow { min-height: 48px; }
+  button.addr { min-height: 44px; }
+}

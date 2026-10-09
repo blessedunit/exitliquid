@@ -1,0 +1,303 @@
+/* LIVE LAUNCHES board (minimal spec §3.1, §1.7): one toolbar (tabs | status · Sort · How to read · Refresh), then the table.
+   No outer border: a label head over a hairline, 56 px rows split by hairlines, --s2 on hover. Colour only on signed numbers. */
+.root { display: grid; gap: 0; font-family: var(--f-ui); color: var(--t1); }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+/* ---------- /launches only: page title ---------- */
+.ph { display: grid; gap: 8px; padding: 0 0 32px; }
+.title { margin: 0; font: 600 32px/40px var(--f-ui); letter-spacing: -.01em; color: var(--t1); }
+.lead { margin: 0; max-width: 64ch; font: 400 15px/24px var(--f-ui); color: var(--t2); }
+
+/* ---------- the toolbar ---------- */
+.bar { display: flex; flex-wrap: wrap; align-items: stretch; justify-content: space-between; gap: 8px 24px; border-bottom: 1px solid var(--line); }
+.tabs { display: flex; gap: 24px; min-width: 0; flex: 0 1 auto; overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab {
+  flex: none; display: inline-flex; align-items: center; gap: 6px; height: 48px; padding: 0; border: 0; background: transparent;
+  color: var(--t2); font: 500 14px/20px var(--f-ui); letter-spacing: 0; white-space: nowrap; cursor: pointer; transition: color .12s, box-shadow .12s;
+}
+.tab:hover { color: var(--t1); }
+.tab:focus-visible { outline: 2px solid var(--exit); outline-offset: -2px; }
+.tabOn, .tabOn:hover { color: var(--t1); box-shadow: inset 0 -2px 0 var(--exit); }
+.count { color: var(--t3); font: 400 12px/1 var(--f-num); font-variant-numeric: tabular-nums; }
+.newCount { color: var(--exit); font: 400 12px/1 var(--f-num); }
+
+.tools { display: flex; align-items: center; gap: 8px; min-width: 0; margin-left: auto; }
+/* the one status: plain text, --t1 while something is wrong */
+.status { display: inline-flex; align-items: center; gap: 8px; color: var(--t1); font: 400 12px/16px var(--f-ui); white-space: nowrap; }
+.statusQuiet { color: var(--t3); font: 400 12px/16px var(--f-ui); white-space: nowrap; }
+.inlineBtn { min-height: 32px; padding: 0 8px; border: 0; background: transparent; color: var(--t2); font: 500 12px/1 var(--f-ui); cursor: pointer; text-decoration: underline; text-underline-offset: 3px; text-decoration-color: var(--line-2); }
+.inlineBtn:hover { color: var(--t1); }
+
+/* Sort: a ghost select, sentence case */
+.sel { position: relative; flex: none; display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 0 0 8px; color: var(--t3); font: 400 14px/1 var(--f-ui); }
+.sel:hover { background: var(--s2); }
+.sel:focus-within { outline: 2px solid var(--exit); outline-offset: -2px; }
+.sel select {
+  height: 100%; padding: 0 26px 0 0; border: 0; background: transparent; color: var(--t1); font: 500 14px/1 var(--f-ui); appearance: none; cursor: pointer; outline: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--t2) 50%), linear-gradient(135deg, var(--t2) 50%, transparent 50%);
+  background-position: calc(100% - 13px) 52%, calc(100% - 9px) 52%; background-size: 4px 4px; background-repeat: no-repeat;
+}
+.sel select option { background: var(--s1); color: var(--t1); }
+
+/* ghost buttons (spec §1.5): no border, --t2 → --t1, --s2 on hover */
+.ghostBtn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 0 12px; border: 0; background: transparent;
+  color: var(--t2); font: 500 14px/1 var(--f-ui); white-space: nowrap; cursor: pointer; transition: color .12s, background .12s;
+}
+.ghostBtn:hover { color: var(--t1); background: var(--s2); }
+.ghostBtn:focus-visible, .refresh:focus-visible, .star:focus-visible, .newPill:focus-visible { outline: 2px solid var(--exit); outline-offset: -2px; }
+.ghostBtn:disabled { color: var(--t3); background: transparent; cursor: default; }
+.refresh {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 12px; margin-right: -12px; border: 0; background: transparent;
+  color: var(--t2); font: 400 12px/1 var(--f-ui); cursor: pointer; white-space: nowrap;
+}
+.refresh:hover { color: var(--t1); background: var(--s2); }
+.refresh svg { flex: none; }
+.refreshOn svg { color: var(--exit); animation: spin .7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.updated { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--t3); font: 400 12px/1 var(--f-ui); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.updated i { display: none; }
+
+/* the meta line under the toolbar: only when there is something to say */
+.sum { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; margin: 0; padding: 12px 0; border-bottom: 1px solid var(--line); font: 400 12px/16px var(--f-ui); color: var(--t3); }
+.qpill { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; color: var(--t2); font: 400 13px/20px var(--f-ui); white-space: nowrap; }
+.qpill b { overflow: hidden; text-overflow: ellipsis; font: 400 13px/20px var(--f-num); color: var(--t1); }
+.qpill button { width: 28px; height: 28px; border: 0; background: transparent; color: var(--t3); font: 400 16px/1 var(--f-ui); cursor: pointer; }
+.qpill button:hover { color: var(--t1); background: var(--s2); }
+/* New tab: "↑ 3 new" (a primary action in its own right) */
+.newPill { height: 32px; padding: 0 14px; border: 0; background: var(--exit); color: var(--exit-ink); font: 600 13px/1 var(--f-ui); cursor: pointer; clip-path: var(--notch); animation: pillIn .32s cubic-bezier(.2,.8,.2,1); }
+.newPill:hover { background: var(--exit-hot); }
+@keyframes pillIn { from { opacity: 0; transform: translateY(-6px); } }
+
+/* ---------- the table ---------- */
+.board { position: relative; display: grid; }
+.row {
+  position: relative; display: grid; align-items: center; column-gap: 16px; min-height: 56px; padding: 8px 0;
+  grid-template-columns: 24px minmax(0, 1fr) 144px 168px 76px 112px 124px 72px 40px;
+  border-bottom: 1px solid var(--line); transition: background .12s;
+}
+.row:not(.head):not(.ghost):hover { background: var(--s2); }
+.rowFocus { background: var(--s2); box-shadow: inset 2px 0 0 var(--exit); }
+.cMob { display: none; }
+
+/* a refresh with the rows kept on screen: a thin running bar over the list (absolute: nothing moves) */
+.progress { position: absolute; left: 0; right: 0; top: -1px; z-index: 3; height: 1px; overflow: hidden; pointer-events: none; opacity: 0; transition: opacity .15s; }
+.progress::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 35%; background: var(--exit); transform: translateX(-100%); }
+.progressOn { opacity: 1; transition-delay: .12s; }
+.progressOn::before { animation: run 1s linear infinite; }
+@keyframes run { to { transform: translateX(300%); } }
+
+/* head: the label style (Mono 11 uppercase, --t3) is allowed here and on stat labels only */
+.head { min-height: 40px; padding: 0; }
+.head[hidden] { display: none; }
+.th { display: flex; align-items: center; gap: 4px; min-width: 0; font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; color: var(--t3); white-space: nowrap; }
+.th button { display: inline-flex; align-items: center; gap: 4px; min-height: 32px; padding: 0; border: 0; background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.th button:hover { color: var(--t1); }
+.th button:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+.th i { font-style: normal; color: var(--t1); }
+.thOn { color: var(--t1); }
+.thShort, .tShort { display: none; }
+.head .cIn, .head .cVol, .head .cSpark, .head .cBs { justify-content: flex-end; }
+.head .cDoor { display: flex; }
+/* VOL 24H · 1h|24h: the period switch as two quiet words */
+.seg { display: inline-flex; margin-left: 2px; }
+.seg button { min-height: 24px; padding: 0 4px; border: 0; background: transparent; color: var(--t3); font: 400 11px/1 var(--f-num); letter-spacing: 0; text-transform: none; cursor: pointer; }
+.seg button:hover { color: var(--t1); }
+.seg button[aria-pressed="true"] { color: var(--t1); text-decoration: underline; text-underline-offset: 3px; }
+
+.num { font: 400 14px/20px var(--f-num); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; color: var(--t1); }
+.rank { color: var(--t3); text-align: left; font-size: 12px; }
+.cStar { display: flex; align-items: center; justify-content: flex-end; }
+.star { position: relative; z-index: 1; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; background: transparent; color: var(--t3); font: 16px/1 var(--f-ui); cursor: pointer; }
+.star:hover { color: var(--t1); background: var(--s3, var(--s2)); }
+.starOn, .starOn:hover { color: var(--exit); }
+
+/* token cell: its link stretches over the whole row (one real link, a row-sized target) */
+.cTok { min-width: 0; display: flex; align-items: center; }
+.tok { display: flex; align-items: center; gap: 12px; min-width: 0; flex: 1 1 auto; color: inherit; text-decoration: none !important; outline: none; }
+.tok::after { content: ""; position: absolute; inset: 0; }
+.tok:focus-visible::after { outline: 2px solid var(--exit); outline-offset: -2px; }
+.logo { display: inline-flex; flex: none; }
+.names { display: grid; gap: 2px; min-width: 0; }
+.sym { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/20px var(--f-ui); color: var(--t1); }
+.meta { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/16px var(--f-ui); color: var(--t3); }
+.sep { color: var(--t3); }
+.hi { color: var(--t2); }
+.hiGood { color: var(--exit); }
+.hiBad { color: var(--down); }
+.addr { font: 400 14px/20px var(--f-num); color: var(--t2); }
+/* Watchlist: what changed since the last visit */
+.since { display: block; font: 400 12px/16px var(--f-ui); color: var(--t3); }
+.s_up, .s_grad { color: var(--exit); }
+.s_down { color: var(--down); }
+.s_stall { color: var(--t1); }
+
+/* the Grade cell: a Mono letter, then the worst flag as a chip */
+.cSig { min-width: 0; display: flex; align-items: center; }
+.sig { display: inline-flex; align-items: center; gap: 12px; min-width: 0; }
+.sigIn { animation: sigIn .45s ease-out both; }
+@keyframes sigIn { from { opacity: 0; } }
+.gr { flex: none; min-width: 14px; font: 400 16px/20px var(--f-num); color: var(--t1); }
+.grade_good { color: var(--exit); }
+.grade_plain { color: var(--t1); }
+.grade_bad { color: var(--down); }
+.grPartial { color: var(--t3); }
+.grNone { color: var(--t3); }
+.grEarly { flex: none; font: 400 13px/20px var(--f-ui); color: var(--t3); }
+.grLoad { width: 24px; }
+/* chips (spec §1.6): a 6 px square + plain text, no frame, no fill */
+.chips { display: flex; min-width: 0; }
+.chip { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; font: 400 13px/20px var(--f-ui); color: var(--t2); white-space: nowrap; text-overflow: ellipsis; }
+.chip i { flex: none; width: 6px; height: 6px; }
+.chipText { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sq_bad { background: var(--down); }
+.sq_warn { background: var(--t1); }
+.sq_plain { background: var(--t3); }
+.sq_good { background: var(--exit); }
+
+/* TO GRAD: a thin bar with the door tick and the %, the ETA under it */
+.cDoor { display: grid; gap: 4px; min-width: 0; }
+.doorTop { display: flex; align-items: center; gap: 12px; }
+.meter { position: relative; flex: 1 1 auto; height: 2px; background: var(--line-2); }
+.meter i { display: block; height: 100%; background: var(--t2); }
+.meter i.meterHot { background: var(--exit); }
+.meter::after { content: ""; position: absolute; right: 0; top: -2px; width: 1px; height: 6px; background: var(--t2); }
+.pct { flex: none; min-width: 48px; text-align: right; font: 400 14px/20px var(--f-num); font-variant-numeric: tabular-nums; color: var(--t1); }
+.hot { color: var(--t1); }
+.eta { position: relative; z-index: 1; justify-self: start; font: 400 12px/16px var(--f-num); color: var(--t3); }
+.grad { display: inline-flex; align-items: center; gap: 8px; font: 400 13px/20px var(--f-ui); color: var(--t2); }
+.grad i { width: 6px; height: 6px; background: var(--exit); }
+
+/* 24H: the line, the 1h % beside it */
+.cSpark { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
+.cSpark .spark { width: 56px; height: 16px; }
+.noSpark { width: 56px; text-align: center; }
+.chg { min-width: 48px; text-align: right; font: 400 12px/16px var(--f-num); font-variant-numeric: tabular-nums; }
+
+.cBs { position: relative; }
+.bs { display: inline-flex; gap: 4px; }
+.slash { color: var(--t3); }
+.up { color: var(--exit); }
+.down { color: var(--down); }
+.unk { color: var(--t3); }
+.bump { position: absolute; right: 0; top: -14px; color: var(--exit); font: 400 11px/1 var(--f-num); font-style: normal; animation: pop .4s ease-out; }
+.rowNew .bump { color: var(--t2); }
+@keyframes pop { from { transform: translateY(4px); opacity: 0; } }
+.rowBuy, .rowNew { background: var(--s2); transition: background 1.2s ease-out; }
+
+.stale { opacity: .55; }
+.stale:hover { opacity: .8; }
+.stub .cStar { grid-column: -2 / -1; }
+
+/* ---------- empty state: the shared ui/EmptyState, plus the row divider ---------- */
+.empty { border-bottom: 1px solid var(--line); }
+.empty .ghostBtn { color: var(--t1); box-shadow: inset 0 0 0 1px var(--line-2); }
+
+.more { display: flex; padding: 16px 0 0; }
+.more .ghostBtn { margin-left: -12px; }
+.fine { margin: 0; padding: 24px 0 0; font: 400 12px/16px var(--f-ui); color: var(--t3); }
+.fine a { color: var(--t2); }
+.fine a:hover { color: var(--exit); }
+
+/* ---------- How to read: one popover panel ---------- */
+.how { width: min(600px, calc(100vw - 32px)); max-height: min(80vh, 640px); overflow: auto; margin: auto; padding: 24px; border: 1px solid var(--line-2); background: var(--s1); color: var(--t1); }
+.how::backdrop { background: rgb(0 0 0 / .55); }
+.howHead { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: -8px -12px 16px 0; }
+.howHead h3 { margin: 0; font: 600 15px/22px var(--f-ui); }
+.howHead .ghostBtn { width: 40px; padding: 0; font-size: 20px; }
+.legendList { display: grid; gap: 16px; margin: 0; }
+.legendList div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 16px; }
+.legendList dt { font: 600 14px/20px var(--f-ui); color: var(--t1); }
+.legendList dd { margin: 0; font: 400 14px/20px var(--f-ui); color: var(--t2); }
+.keyList { display: grid; gap: 8px; margin: 24px 0 0; padding-top: 16px; border-top: 1px solid var(--line); }
+.keyList div { display: grid; grid-template-columns: 120px 1fr; gap: 16px; align-items: center; }
+.keyList dt { font: 400 12px/1 var(--f-num); color: var(--t3); }
+.keyList dd { margin: 0; font: 400 13px/20px var(--f-ui); color: var(--t2); }
+.keyList kbd { display: inline-block; min-width: 20px; padding: 3px 5px; border: 1px solid var(--line-2); color: var(--t1); font: 400 11px/1 var(--f-num); text-align: center; }
+@media not all and (pointer: fine) { .keysOnly { display: none; } }
+
+/* ---------- widths ---------- */
+@media (max-width: 1180px) {
+  .row { grid-template-columns: 24px minmax(0, 1fr) 84px 160px 76px 104px 124px 72px 40px; }
+  /* narrow: the worst flag stays, as a muted 12px line under the letter (never a bare grade) */
+  .sig { flex-direction: column; align-items: flex-start; gap: 0; max-width: 100%; }
+  .chips { max-width: 100%; }
+  .chip { gap: 6px; font-size: 12px; line-height: 16px; color: var(--t3); }
+  .head .cSig .th, .head .cSig { overflow: visible; }
+}
+@media (max-width: 1040px) {
+  .row { grid-template-columns: minmax(0, 1fr) 84px 160px 104px 124px 72px 40px; }
+  .cRank, .cIn { display: none !important; }
+}
+@media (max-width: 900px) {
+  .row { grid-template-columns: minmax(0, 1fr) 80px 140px 96px 56px 64px 40px; column-gap: 12px; }
+  .cSpark .spark, .noSpark { display: none; }
+  .howBtn { display: none; }
+}
+
+/* ---------- phone: three lines per row, the head hidden (Sort lives in the toolbar) ---------- */
+@media (max-width: 760px) {
+  .ph { padding: 0 0 24px; }
+  .title { font-size: 26px; line-height: 32px; }
+  .bar { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; border-bottom: 0; }
+  .tabs { gap: 16px; margin: 0 -16px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+  .tab { height: 44px; }
+  .tLong { display: none; }
+  .tShort { display: inline; }
+  .tools { margin-left: 0; justify-content: space-between; border-bottom: 1px solid var(--line); }
+  .sel { margin-left: -8px; }
+  .status { order: 3; }
+  .head { display: none; }
+  .row {
+    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-areas: "tok tok sig" ". door door" ". mob star";
+    column-gap: 0; row-gap: 6px; min-height: 0; padding: 14px 0 10px;
+  }
+  .cRank, .cIn, .cVol, .cSpark, .cBs { display: none !important; }
+  .cTok { grid-area: tok; }
+  .tok { gap: 12px; }
+  .cSig { grid-area: sig; justify-self: end; padding-left: 12px; max-width: 120px; }
+  .sig { align-items: flex-end; }
+  .cDoor { grid-area: door; display: flex; align-items: center; gap: 8px; }
+  .doorTop { flex: 0 1 220px; min-width: 0; gap: 8px; }
+  .pct { min-width: 0; }
+  .grad { font-size: 13px; }
+  .cMob { grid-area: mob; display: block; align-self: center; min-width: 0; font: 400 12px/16px var(--f-ui); color: var(--t2); }
+  .cStar { grid-area: star; margin: -8px -8px -8px 0; }
+  .star { width: 44px; height: 40px; }
+  .stub { grid-template-areas: "tok tok star"; }
+  .stub .cStar { margin: 0; }
+  .ghost { min-height: 92px; grid-template-areas: "tok tok sig" ". door door" ". door door"; }
+  .ghost .cStar { display: none; }
+  .empty { min-height: 200px; }
+  .how { padding: 16px; }
+  .legendList div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghost, .bump, .newPill, .sigIn, .gBar { animation: none !important; }
+  .row { transition: none; }
+}
+
+/* ---------- loading: skeleton bars, one slow pulse (spec §1.8) ---------- */
+.boarding { display: contents; }
+.ghost { background: transparent; animation: ghostIn .25s ease-out both; }
+@keyframes ghostIn { from { opacity: 0; } }
+.gBar { display: block; height: 10px; background: var(--s2); animation: pulse 1.2s ease-in-out infinite; }
+@keyframes pulse { 50% { opacity: .45; } }
+.gSmall { height: 8px; }
+.gTok { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.gAv { width: 28px; height: 28px; flex: none; background: var(--s2); }
+.gNames { display: grid; gap: 8px; flex: 1; max-width: 180px; }
+.gNum { justify-self: end; width: 56%; margin-left: auto; }
+/* rows arrive softly instead of popping in */
+.fresh .row:not(.head):not(.ghost) { animation: rowIn .5s cubic-bezier(.2,.7,.2,1) both; }
+/* loading: in the flow; leaving: an overlay on the new rows that fades away (crossfade, no cut) */
+.bIn { display: contents; }
+.bOut { position: absolute; left: 0; right: 0; z-index: 2; pointer-events: none; background: var(--bg); animation: bOut .5s cubic-bezier(.4,0,.2,1) forwards; }
+@keyframes bOut { to { opacity: 0; } }
+@keyframes rowIn { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .fresh .row:not(.head):not(.ghost) { animation: none !important; }
+}
