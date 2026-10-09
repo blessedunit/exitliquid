@@ -12,6 +12,7 @@ import { fmtDur, fmtShare, stateHeadline } from "./headline";
 import PageHead from "@/components/PageHead";
 import SectionTabs from "@/components/ui/SectionTabs";
 import ShowMore from "@/components/ui/ShowMore";
+import TokenAvatar from "@/components/TokenAvatar";
 import Term from "@/components/ui/Term";
 import type { GlossaryId } from "@/lib/glossary";
 import s from "./state.module.css";
@@ -371,7 +372,14 @@ function Devs({ d }: { d: StateSnapshot }) {
               </span>
               <span className={s.r}>{fmtShare(r.launches ? r.grads / r.launches : null)}</span>
               <span className={`${s.r} ${s.hideS} ${s.latest}`}>
-                {r.lastToken ? <Link href={`/line/${r.lastToken}`} prefetch={false}>{r.lastSymbol ? `$${r.lastSymbol}` : shortAddr(r.lastToken)}</Link> : "—"}
+                {r.lastToken ? (
+                  <Link className={s.latestLink} href={`/line/${r.lastToken}`} prefetch={false}>
+                    <TokenAvatar src={r.lastImage ?? null} symbol={r.lastSymbol ?? ""} size={20} />
+                    <span>{r.lastSymbol ? `$${r.lastSymbol}` : shortAddr(r.lastToken)}</span>
+                  </Link>
+                ) : (
+                  "—"
+                )}
               </span>
             </div>
           ))}
@@ -402,9 +410,12 @@ function Volumes({ d }: { d: StateSnapshot }) {
             {v.rows.map((r: VolRow, i) => (
               <Link key={r.token} href={`/line/${r.token}`} prefetch={false} className={`${s.tr} ${s.trVol} ${s.rowLink}`}>
                 <span className={s.place}>{i + 1}</span>
-                <span className={s.tok}>
-                  <b>${r.symbol || shortAddr(r.token)}</b>
-                  <small>{r.name}</small>
+                <span className={s.tokRow}>
+                  <TokenAvatar src={r.image ?? null} symbol={r.symbol} size={28} />
+                  <span className={s.tok}>
+                    <b>${r.symbol || shortAddr(r.token)}</b>
+                    <small>{r.name}</small>
+                  </span>
                 </span>
                 <span className={`${s.r} ${s.strong}`}>{fmtEth(r.volume24hEth)}</span>
                 <span className={`${s.r} ${s.hideS}`}>{fmtShare(v.total ? r.volume24hEth / v.total : null)}</span>
@@ -460,7 +471,10 @@ function AfterGrad({ d, now }: { d: StateSnapshot; now: number }) {
                 {(n) =>
                   full.slice(0, n).map((r: DoorRow) => (
                     <Link key={r.token} href={`/line/${r.token}`} prefetch={false} className={`${s.tr} ${s.trDoor} ${s.rowLink}`}>
-                      <span className={s.tok}><b>{r.symbol ? `$${r.symbol}` : shortAddr(r.token)}</b></span>
+                      <span className={s.tokRow}>
+                        <TokenAvatar src={r.image ?? null} symbol={r.symbol ?? ""} size={24} />
+                        <span className={s.tok}><b>{r.symbol ? `$${r.symbol}` : shortAddr(r.token)}</b></span>
+                      </span>
                       <span className={`${s.r} ${s.dim}`}>{ago(r.gradTs, now)} ago</span>
                       <span className={`${s.r} ${r.traded1h === false ? s.dim : retClass(r.ret1h)}`}>{r.traded1h === false ? "no trade" : fmtRet(r.ret1h)}</span>
                       <span className={`${s.r} ${retClass(r.ret24h)}`}>{r.ret24h === null ? <span className={s.dim}>{now - r.gradTs < 86_400 ? "not yet" : "—"}</span> : fmtRet(r.ret24h)}</span>

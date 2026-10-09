@@ -123,6 +123,10 @@
 .rowLink:hover { background: var(--s2); }
 .rowLink:focus-visible { outline: 2px solid var(--exit); outline-offset: -2px; }
 .tok { display: grid; gap: 2px; min-width: 0; }
+/* token cell: picture (letter until it paints) + ticker, as on the board */
+.tokRow { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.latestLink { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; min-width: 0; vertical-align: middle; }
+.latestLink > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tok b { color: var(--t1); font: 500 14px/20px var(--f-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tok small { color: var(--t3); font: 400 12px/16px var(--f-ui); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .up { color: var(--exit); }

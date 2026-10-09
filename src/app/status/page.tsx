@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "Status",
-  description: "How fresh each data source behind Exit Liquidity is right now: vibe/vibe API, chain RPC, explorer, wallet index.",
+  description: "How fresh each data source behind Exit Liquidity is right now: chain RPC, vibe/vibe API, explorer, Early Index, State snapshot, caches.",
 };
 
 const WORD: Record<Level, string> = { ok: "Fresh", warn: "Lagging", down: "Down" };
@@ -55,7 +55,7 @@ export default async function StatusPage() {
               <span className={k.label}>Source</span>
               <span className={k.label}>Affects</span>
               <span className={k.label}>State</span>
-              <span className={k.label}>Lag</span>
+              <span className={k.label}>Age · lag</span>
               <span className={`${k.label} ${styles.r}`}>Answered in</span>
             </li>
             {r.probes.map((p) => (
@@ -70,7 +70,7 @@ export default async function StatusPage() {
                   {p.value}
                   {p.reason && <small>{p.reason}</small>}
                 </span>
-                <span className={`${styles.ms} ${styles.r}`}>{p.latencyMs === null ? <span className={k.dim}>hourly build</span> : `${p.latencyMs.toLocaleString("en-US")} ms`}</span>
+                <span className={`${styles.ms} ${styles.r}`}>{p.latencyMs === null ? <span className={k.dim}>{p.local ?? "—"}</span> : `${p.latencyMs.toLocaleString("en-US")} ms`}</span>
               </li>
             ))}
           </ul>

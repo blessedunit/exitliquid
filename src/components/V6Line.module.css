@@ -27,7 +27,7 @@
 .crowd { position: absolute; left: 0; right: 112px; bottom: 30px; display: flex; flex-direction: row-reverse; align-items: flex-end; gap: 14px; padding-right: 10px; overflow: hidden; height: 180px; }
 .person { position: relative; flex: none; display: flex; flex-direction: column; align-items: center; animation: idle .9s steps(1) infinite; }
 .person img { display: block; }
-/* no glow around the front person (operator 30.09: no green outline around characters) */
+/* no glow around the front person (no outline around characters) */
 .label { position: absolute; bottom: calc(100% + 4px); display: grid; justify-items: center; gap: 2px; padding: 3px 5px; background: #050a07; border: 1px solid #41614a; color: var(--t2); font: 700 9px/1 var(--f-num); letter-spacing: .04em; white-space: nowrap; }
 .label b { color: var(--t1); font-weight: 600; }
 .front .label { border-color: var(--exit); }

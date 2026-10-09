@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   description: "How Exit Liquidity computes Line Health, sniper and farm labels, bundles, exit math, real volume and graduation ETA. Signals, not verdicts.",
 };
 
-// the Early Index numbers below come from the file ops/early_index.py rewrites every hour (lib/earlyIndex):
+// the Early Index numbers below come from the file an hourly indexing job rewrites (lib/earlyIndex):
 // the page is regenerated at most every 10 min instead of being frozen at build time
 export const revalidate = 600;
 

@@ -2,6 +2,7 @@
 // The list is a directory only: every number on a /line/<token> page is read from the chain.
 import "server-only";
 import { CHAIN_ID } from "./config";
+import { beat } from "./beacon";
 
 export type LaunchTab = "new" | "hot" | "door" | "grad";
 
@@ -95,7 +96,11 @@ async function memoized<T>(key: string, ttlMs: number, run: () => Promise<T>): P
     .then((v) => {
       if (memo.size > 400) memo.clear();
       memo.set(key, { at: Date.now(), v });
+      beat("directory", true);
       return v;
+    }, (e) => {
+      beat("directory", false, e);
+      throw e;
     })
     .finally(() => running.delete(key));
   running.set(key, p);

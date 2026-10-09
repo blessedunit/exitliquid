@@ -88,7 +88,7 @@ export default function Corridor({
   showWallets = false,
   event,
   height = 300,
-  ghosts = 0, // ghost beyond the door is off for now (operator 24.09)
+  ghosts = 0, // ghost beyond the door is off for now
   compact = false,
   showRest = true,
   scene = "door",

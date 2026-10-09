@@ -1,14 +1,17 @@
 // Freshness of every data source behind the site, for /status and /api/status.
-// One probe per source (4 requests, in parallel, short timeouts), shared for PROBE_TTL_MS by every visitor,
-// so the status page itself can never hammer vibe/vibe, the RPC or the explorer.
+// Three network pings (RPC head, one vibe/vibe list row, the explorer's newest blocks; in parallel, short
+// timeouts) plus three local reads (Early Index file, State snapshot, in-memory caches). The whole report is
+// shared for PROBE_TTL_MS by every visitor, so the status page itself can never hammer vibe/vibe, the RPC or the explorer.
 // Unknown is never "fine": a probe that fails is red with the reason, never a green zero.
 import "server-only";
 import { CHAIN_ID, EXPLORER, PUBLIC_RPC_URL } from "./config";
 import { earlyIndex } from "@/lib/earlyIndex";
+import { peekState, stateBuildSince } from "@/lib/state";
+import { readBeat, type Beat } from "@/lib/beacon";
 
 export type Level = "ok" | "warn" | "down";
 export type Probe = {
-  id: "vibe" | "rpc" | "explorer" | "index";
+  id: "vibe" | "rpc" | "explorer" | "index" | "state" | "caches";
   name: string;
   level: Level;
   /** the headline, e.g. "Head 3 s behind" */
@@ -24,17 +27,21 @@ export type Probe = {
   /** the same in a few words for the /status banner ("vibe/vibe API ~3 min behind"); null when green */
   short?: string | null;
   latencyMs: number | null;
+  /** shown instead of a latency for local reads ("hourly file", "in memory") */
+  local?: string;
 };
 export type StatusReport = { checkedAt: number; probes: Probe[]; overall: Level };
 
-const PROBE_TTL_MS = 15_000;
+const PROBE_TTL_MS = 60_000;
 const TIMEOUT_MS = 6_000;
 const VIBE_API = `https://testnet.vibevibe.fun/api/v1/chains/${CHAIN_ID}`;
 const VIBE_HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.fun", "user-agent": "exitliquid.fun (read-only directory)" };
 // the server's private RPC when set (what the site really reads from); never printed
 const RPC_URL = process.env.EXIT_RPC_URL || PUBLIC_RPC_URL;
-const INDEX_MAX_AGE_SEC = 14 * 86400; // lib/health.ts drops sniper/farm labels past this age
-const INDEX_FRESH_SEC = 6 * 3600; // refreshed hourly (the hourly index job): older means the refresh task stopped
+const INDEX_FRESH_SEC = 2 * 3600; // refreshed hourly: one missed run is still green
+const INDEX_STALE_SEC = 6 * 3600; // five missed runs: the refresh task has stopped
+const STATE_FRESH_SEC = 30 * 60; // a snapshot is served as is for 15 min, then rebuilt on the next read
+const STATE_STALE_SEC = 6 * 3600;
 
 const ago = (sec: number) =>
   sec < 90 ? `${Math.max(0, Math.round(sec))} s` : sec < 5400 ? `${Math.round(sec / 60)} min` : sec < 172_800 ? `${Math.round(sec / 3600)} h` : `${Math.round(sec / 86400)} d`;
@@ -185,20 +192,124 @@ function probeIndex(): Probe {
     id: "index" as const,
     name: "Early Index (snipers & farms)",
     affects: "Sniper and farm labels in Line Health, the board's sniper counts",
-    detail: "Rebuilt every hour from the chain. Green under 6 hours old, yellow under 14 days; older labels are not used.",
+    detail: "Rebuilt every hour from the chain. Green under 2 hours old, yellow under 6 hours.",
     latencyMs: null,
+    local: "hourly file",
   };
   if (!ix.generatedAt) return { ...base, level: "down", value: "Not loaded", reason: "No index in this build: sniper and farm signals show as unknown.", short: "Early Index missing" };
   const age = Math.max(0, Date.now() / 1000 - ix.generatedAt);
-  const level: Level = age < INDEX_FRESH_SEC ? "ok" : age < INDEX_MAX_AGE_SEC ? "warn" : "down";
+  const level: Level = age < INDEX_FRESH_SEC ? "ok" : age < INDEX_STALE_SEC ? "warn" : "down";
   const built = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "UTC" }).format(ix.generatedAt * 1000);
   const size = `${ix.snipers?.length ?? 0} snipers, ${ix.farms?.length ?? 0} farms from ${(ix.tokensScanned ?? 0).toLocaleString("en-US")} launches (${ix.windowDays ?? "?"} d)`;
   return {
     ...base,
     level,
     value: `Built ${built} UTC · ${ago(age)} old`,
-    reason: level === "ok" ? null : level === "warn" ? `${size}. The hourly refresh is behind: new sniper wallets are missing.` : `${size}. Too old: Line Health ignores these labels and marks them unknown.`,
+    lagSec: age,
+    reason:
+      level === "ok"
+        ? null
+        : level === "warn"
+          ? `${size}. The hourly refresh missed a run: the newest sniper wallets are missing.`
+          : `${size}. The hourly refresh has stopped: sniper and farm labels miss every wallet since then.`,
     short: level === "ok" ? null : `Early Index ${ago(age)} old`,
+  };
+}
+
+/** The State of vibe snapshot (/state, the door's +1h moves): built on demand, kept in memory and on disk. */
+async function probeState(): Promise<Probe> {
+  const base = {
+    id: "state" as const,
+    name: "State snapshot",
+    affects: "State of vibe, the door's +1h moves, the board's time to graduation",
+    detail: "Rebuilt from the chain when a reader finds it over 15 min old. Green under 30 min, yellow under 6 hours.",
+    latencyMs: null,
+    local: "memory + disk",
+  };
+  const since = stateBuildSince();
+  const b = readBeat("state");
+  const failed = b && b.failAt > b.okAt ? b : null;
+  const building = since ? ` · rebuilding for ${ago((Date.now() - since) / 1000)}` : "";
+  let s: Awaited<ReturnType<typeof peekState>> = null;
+  let readErr: string | null = null;
+  try {
+    s = await peekState();
+  } catch (e) {
+    readErr = String((e as Error)?.message ?? e).slice(0, 120);
+  }
+  if (!s) {
+    const why = readErr
+      ? `Snapshot unreadable: ${readErr}.`
+      : failed
+        ? `The last build failed: ${failed.err}.`
+        : since
+          ? "The first build is running."
+          : "No snapshot in memory or on disk yet: the next /state visit builds one.";
+    return {
+      ...base,
+      level: failed || readErr ? "down" : "warn",
+      value: since ? `Building${building}` : "No snapshot",
+      reason: `${why} State of vibe shows — until it lands.`,
+      short: "State snapshot missing",
+      lagSec: null,
+    };
+  }
+  const age = Math.max(0, Date.now() / 1000 - s.builtAt);
+  const byAge: Level = age < STATE_FRESH_SEC ? "ok" : age < STATE_STALE_SEC ? "warn" : "down";
+  // a failed rebuild after the snapshot means it can only get older: never green
+  const level: Level = failed && byAge === "ok" ? "warn" : byAge;
+  const why = [
+    byAge !== "ok" ? `Built ${ago(age)} ago${since ? "; a rebuild is running" : ": rebuilt on the next /state visit"}. State figures and door moves are that old.` : null,
+    failed ? `The last rebuild failed (${failed.err}).` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  return {
+    ...base,
+    level,
+    value: `Block ${s.headBlock.toLocaleString("en-US")} · ${ago(age)} old${building}`,
+    lagSec: age,
+    reason: level === "ok" ? null : why || null,
+    short: level === "ok" ? null : failed ? "State snapshot rebuild failed" : `State snapshot ${ago(age)} old`,
+  };
+}
+
+/** The in-process caches pages read first: the $EXIT line and the launch directory. No network. */
+function probeCaches(): Probe {
+  const base = {
+    id: "caches" as const,
+    name: "In-memory caches",
+    affects: "The $EXIT line, Hall of Exits, launch board and search",
+    detail: "Filled on demand by visitors. Green when the last refresh of each worked; yellow while one is cold or a recent copy covers a failed refresh.",
+    latencyMs: null,
+    local: "in memory",
+  };
+  const part = (label: string, b: Beat | null, keepMs: number): { level: Level; text: string; why: string | null } => {
+    if (!b) return { level: "warn", text: `${label} cold`, why: `${label} not filled since the server started: unknown until the first visitor reads it.` };
+    const okAge = b.okAt ? (Date.now() - b.okAt) / 1000 : null;
+    const text = okAge === null ? `${label} never filled` : `${label} ${ago(okAge)} old`;
+    if (b.failAt <= b.okAt) return { level: "ok", text, why: null };
+    // the newest refresh failed: a copy younger than keepMs still serves (labelled), older means unknown on the page
+    const serving = okAge !== null && okAge * 1000 < keepMs;
+    return {
+      level: serving ? "warn" : "down",
+      text,
+      why: `${label}: the last refresh failed ${ago((Date.now() - b.failAt) / 1000)} ago (${b.err})${serving ? ", a recent copy serves." : ", pages show —."}`,
+    };
+  };
+  const line = part("Line", readBeat("line"), 5 * 60_000); // lib/service.ts SNAPSHOT_MAX_AGE
+  const dir = part("Directory", readBeat("directory"), 10 * 60_000);
+  const rank = (l: Level) => (l === "down" ? 2 : l === "warn" ? 1 : 0);
+  const worst = rank(line.level) >= rank(dir.level) ? line : dir;
+  const level = worst.level;
+  const label = worst === line ? "line" : "directory";
+  return {
+    ...base,
+    level,
+    value: `${line.text} · ${dir.text}`,
+    reason: level === "ok" ? null : [line.why, dir.why].filter(Boolean).join(" ") || null,
+    short: level === "ok" ? null : level === "down" ? `${label} cache failing` : `${label} cache cold`,
+    lagSec: null,
   };
 }
 
@@ -229,14 +340,18 @@ export function statusLead(probes: Pick<Probe, "id" | "level" | "lagSec">[]): st
       : `vibe/vibe API is slow: launch list and holder data may lag${m ? ` by ~${m}` : ""}. Chain reads are live.`;
   }
   if (exp && exp.level !== "ok") return "The explorer is lagging: funding sources may show as unknown. Everything else is live.";
-  if (ix && ix.level !== "ok") return ix.level === "down" ? "The Early Index is too old: sniper and farm labels show as unknown." : "The Early Index is getting old: the newest sniper wallets may be missing.";
+  if (ix && ix.level !== "ok") return ix.level === "down" ? "The Early Index refresh has stopped: the newest sniper and farm wallets are missing." : "The Early Index is getting old: the newest sniper wallets may be missing.";
+  const st = by("state");
+  if (st && st.level !== "ok") return "The State of vibe snapshot is old or missing: State figures and door moves may lag.";
+  const ca = by("caches");
+  if (ca && ca.level !== "ok") return "An in-memory cache is cold or failing: the first read of a page may be slow.";
   if (!probes.length) return "Status unknown: no source has answered yet.";
-  return "All sources fresh: numbers are at most ~15 s old.";
+  return "All sources fresh.";
 }
 
 /** the /status banner's reason: the worst source in a few words, or null when all are green */
 export function statusShort(probes: Pick<Probe, "id" | "level" | "short">[]): string | null {
-  const order: Probe["id"][] = ["rpc", "vibe", "explorer", "index"];
+  const order: Probe["id"][] = ["rpc", "vibe", "explorer", "index", "state", "caches"];
   const rank = (p: Pick<Probe, "id" | "level">) => (p.level === "down" ? 0 : p.level === "warn" ? 1 : 2) * 10 + order.indexOf(p.id);
   const worst = probes.filter((p) => p.level !== "ok").sort((a, b) => rank(a) - rank(b))[0];
   return worst ? (worst.short ?? null) : null;
@@ -246,7 +361,7 @@ export async function statusReport(): Promise<StatusReport & { cacheAgeMs: numbe
   if (last && Date.now() - last.checkedAt < PROBE_TTL_MS) return { ...last, cacheAgeMs: Date.now() - last.checkedAt };
   if (!running) {
     const head = readHead();
-    running = Promise.all([probeVibe(head), head.then(probeRpc), probeExplorer(), Promise.resolve(probeIndex())])
+    running = Promise.all([head.then(probeRpc), probeVibe(head), probeExplorer(), Promise.resolve(probeIndex()), probeState(), Promise.resolve(probeCaches())])
       .then((probes) => {
         const overall: Level = probes.some((p) => p.level === "down") ? "down" : probes.some((p) => p.level === "warn") ? "warn" : "ok";
         last = { checkedAt: Date.now(), probes, overall };

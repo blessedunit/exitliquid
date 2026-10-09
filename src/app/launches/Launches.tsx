@@ -275,7 +275,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
   const [conn, setConn] = useState<Conn>("ok");
   const [flash, setFlash] = useState<Record<string, number>>({}); // token -> new buys since the last look (-1 = new row)
   const [period, setPeriod] = useState<Period>(board.period);
-  // filter chips were removed from the board (operator, 03.10): the list always shows every row
+  // filter chips were removed from the board : the list always shows every row
   const [filters, setFilters] = useState<FilterId[]>([]);
   const [sort, setSort] = useState<{ key: SortKey; dir: Dir }>({ key: board.sort, dir: board.dir });
   const [now, setNow] = useState<number | null>(null); // ages appear after mount: no server/client clock mismatch

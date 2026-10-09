@@ -3,9 +3,10 @@ import Link from "next/link";
 import { useQueue, ago } from "@/lib/useLive";
 import { short } from "@/lib/queue";
 import EmptyState from "@/components/ui/EmptyState";
+import TokenAvatar from "@/components/TokenAvatar";
 import styles from "../board/board.module.css";
 
-export default function HallList() {
+export default function HallList({ image = null }: { image?: string | null }) {
   const { data, error } = useQueue(20_000, 50);
   const exits = data?.exits ?? [];
   if ((!data && error) || data?.unavailable) {
@@ -23,6 +24,17 @@ export default function HallList() {
     );
   }
   return (
+    <>
+    {data && (
+      // whose line this is: the token picture (letter until it paints) + ticker + the count
+      <p className={styles.hallCtx}>
+        <TokenAvatar src={image} symbol={data.symbol} size={24} />
+        <b>${data.symbol}</b>
+        <span>
+          line · {data.totals.exited.toLocaleString("en-US")} walked out · {data.totals.inLine.toLocaleString("en-US")} still in line
+        </span>
+      </p>
+    )}
     <div className={styles.table} role="table">
       <div className={`${styles.tr} ${styles.trHall} ${styles.th}`} role="row">
         <span role="columnheader">Passenger</span>
@@ -62,5 +74,6 @@ export default function HallList() {
         </Link>
       ))}
     </div>
+    </>
   );
 }

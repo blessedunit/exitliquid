@@ -16,7 +16,9 @@ export async function GET(req: Request, ctx: RouteContext<"/api/img/[cid]">) {
   if ([...u.searchParams.keys()].some((k) => k !== "w")) return new Response("bad query", { status: 400 });
   if (!(await rateLimit(LIMITS.img, clientIp(req), { localOnly: true }))) return tooMany();
   const img = await ipfsImage(cid);
-  if (!img) return new Response("not found", { status: 404, headers: { "cache-control": "public, max-age=300" } });
+  // no picture: 204, not 404. An <img> treats both as an error (TokenAvatar keeps the letter), but a 404 also
+  // prints "Failed to load resource" in every visitor's console, once per missing logo
+  if (!img) return new Response(null, { status: 204, headers: { "cache-control": "public, max-age=300", "x-img": "not-found" } });
   const w = Number(u.searchParams.get("w"));
   const cache = "public, max-age=31536000, immutable";
   if (SIZES.includes(w) && img.type !== "image/svg+xml") {

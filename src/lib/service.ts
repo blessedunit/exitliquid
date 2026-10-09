@@ -8,6 +8,7 @@ import type { Mode, QueueResponse, WireEntry, WireExit, WireFeed, WireTrade } fr
 import type { Hex } from "viem";
 import { client } from "./chain";
 import { BoundedTtlMap } from "./bounded";
+import { beat } from "./beacon";
 
 // vibe/vibe protocol contracts that move tokens but are never people.
 export const PLUMBING = [
@@ -245,9 +246,11 @@ export async function buildState(): Promise<Built> {
       lastGoodAt = Date.now();
       memo = { at: Date.now(), value: built };
       failedAt = 0;
+      beat("line", true);
       return built;
     } catch (e) {
       failedAt = Date.now();
+      beat("line", false, e);
       // log every failed refresh (at most one per 20 s window), not only the cold-start ones
       console.error("chain read failed", lastGood ? "(serving last good snapshot)" : "", String((e as Error)?.message ?? e).slice(0, 300));
       return snapshot() ?? unavailableState();

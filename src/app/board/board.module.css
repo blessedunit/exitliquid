@@ -51,6 +51,9 @@ a.tr:hover { background: var(--s2); }
 @media (prefers-reduced-motion: reduce) { .skelRow i { animation: none; } }
 .trHall { grid-template-columns: 1.2fr 0.8fr 1fr 1fr 0.8fr; }
 .mono { font-family: var(--f-num); white-space: nowrap; }
+/* hall: whose line it is, above the table */
+.hallCtx { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0 0 var(--sp-5); color: var(--t3); font: 400 13px/20px var(--f-ui); }
+.hallCtx b { color: var(--t1); font: 600 14px/20px var(--f-ui); }
 .more {
   display: inline-flex; align-items: center; min-height: 40px; padding: 0 12px; margin: var(--sp-3) 0 0 -12px;
   background: transparent; border: 0; cursor: pointer; color: var(--t2); font: 500 14px/20px var(--f-ui);

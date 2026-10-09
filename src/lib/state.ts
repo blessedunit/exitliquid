@@ -24,6 +24,7 @@ import { CHAIN_ID } from "./config";
 import { PLUMBING } from "./service";
 import { redis, storeKind } from "./store";
 import { earlyIndex, perIndex } from "@/lib/earlyIndex";
+import { beat } from "./beacon";
 
 /* ------------------------------------------------------------------ wire types (the page imports these) */
 
@@ -54,6 +55,7 @@ export type DevRow = {
   launches: number; // all time
   lastToken: string | null; // the dev's latest graduated token
   lastSymbol: string | null;
+  lastImage?: string | null; // the latest token's picture (/api/img proxy); missing = the letter stands in
   unlisted?: number; // launches on factories vibe's lists leave out (first, legacy): /dev reads those from the chain
 };
 
@@ -65,6 +67,7 @@ export type VolRow = {
   graduated: boolean;
   progressBps: number | null;
   taxed: boolean;
+  image?: string | null; // /api/img proxy url; missing = the letter stands in
 };
 
 export type DoorRow = {
@@ -75,6 +78,7 @@ export type DoorRow = {
   ret24h: number | null;
   trades24h: number | null;
   traded1h?: boolean | null; // false = no swap in the first hour (ret1h is then 0 by construction)
+  image?: string | null;
 };
 
 export type StateSnapshot = {
@@ -229,6 +233,8 @@ const DEV_INDEX_SAVE_MS = 60 * 60_000; // the hash is ~10k fields: rewrite it at
 
 let snapshot: StateSnapshot | null = null;
 let building: Promise<StateSnapshot> | null = null;
+// when the running build started (0 = none), shared across module copies for /status
+const SHARED_RUN = globalThis as { __exitStateRunSince?: number };
 let stage = "idle";
 
 /* ------------------------------------------------------------------ small helpers */
@@ -589,6 +595,7 @@ async function vibe<T>(path: string, timeout = 12_000, tries = 3): Promise<T> {
 
 type ApiItem = {
   tokenAddress?: string; name?: string; symbol?: string; createdAt?: string;
+  content?: { image?: { uri?: string } };
   moderation?: { visibility?: string };
   curve?: { lifecycle?: string; progressBps?: number; graduatedAt?: string | null };
   analytics?: { volume24hWei?: string };
@@ -597,8 +604,49 @@ type ApiPage = { data?: { items?: ApiItem[]; page?: { totalCount?: number } } };
 type V6Item = {
   tokenAddress?: string; name?: string; symbol?: string; pairIsNative?: boolean; graduated?: boolean; lifecycle?: string;
   targetPairUnits?: string; curve?: { pairReserveUnits?: string }; market?: { volume24hPairUnits?: string };
+  content?: { image?: { uri?: string } };
   moderation?: { visibility?: string };
 };
+
+// token pictures go through our own cached proxy (/api/img), the same urls the board uses
+function gateway(uri: unknown): string | null {
+  if (typeof uri !== "string") return null;
+  if (uri.startsWith("ipfs://")) {
+    const cid = uri.slice(7).split("/")[0];
+    return /^[a-zA-Z0-9]{46,100}$/.test(cid) ? `/api/img/${cid}?w=96` : null;
+  }
+  return uri.startsWith("https://") ? uri : null;
+}
+// token -> picture url (null = vibe has none), filled from every vibe read in a build
+const images = new Map<string, string | null>();
+
+/** Pictures for tokens no list read covered (door rows, devs' latest): one batched call per 20, best effort. */
+async function loadImages(tokens: string[]) {
+  const todo = [...new Set(tokens)].filter((t) => /^0x[0-9a-f]{40}$/.test(t) && !images.has(t)).slice(0, 40);
+  for (let i = 0; i < todo.length; i += 20) {
+    try {
+      const part = todo.slice(i, i + 20);
+      const j = await vibe<ApiPage>(`/launches/cards?tokens=${part.join(",")}`, 10_000, 1);
+      for (const x of j.data?.items ?? []) {
+        const t = x.tokenAddress?.toLowerCase();
+        if (t && x.moderation?.visibility !== "HIDDEN") images.set(t, gateway(x.content?.image?.uri));
+      }
+    } catch {
+      /* pictures are decoration: the letter stands in */
+    }
+  }
+  // the cards endpoint leaves out first- and legacy-factory launches (devs' latest tokens often are):
+  // the single-token endpoint still knows them. One at a time, at most 20 per build.
+  for (const t of todo.filter((x) => !images.has(x)).slice(0, 20)) {
+    try {
+      const j = await vibe<{ data?: ApiItem }>(`/launches/${t}`, 8_000, 1);
+      images.set(t, j.data && j.data.moderation?.visibility !== "HIDDEN" ? gateway(j.data.content?.image?.uri) : null);
+    } catch (e) {
+      if (String((e as Error)?.message).endsWith(" 404")) images.set(t, null); // not a v1 launch: final, don't ask again
+    }
+  }
+  if (images.size > 20_000) images.clear();
+}
 
 const weiEth = (v: unknown) => (typeof v === "string" && /^\d+$/.test(v) ? Number(BigInt(v) / 10n ** 9n) / 1e9 : null);
 
@@ -631,6 +679,8 @@ async function volumeLeaders(recentGradTokens: string[]): Promise<{ rows: VolRow
   const addV1 = (x: ApiItem) => {
     const t = x.tokenAddress?.toLowerCase();
     if (!t || !/^0x[0-9a-f]{40}$/.test(t) || x.moderation?.visibility === "HIDDEN") return;
+    const image = gateway(x.content?.image?.uri);
+    images.set(t, image);
     const v = weiEth(x.analytics?.volume24hWei);
     if (v === null) return;
     seen.set(t, {
@@ -641,6 +691,7 @@ async function volumeLeaders(recentGradTokens: string[]): Promise<{ rows: VolRow
       graduated: x.curve?.lifecycle === "GRADUATED",
       progressBps: Number.isFinite(Number(x.curve?.progressBps)) ? Number(x.curve?.progressBps) : null,
       taxed: false,
+      image,
     });
   };
   for (const q of ["sort=TRENDING&limit=100", "lifecycle=GRADUATED&limit=100", "sort=PROGRESS_DESC&lifecycle=CURVE_TRADING&limit=50"]) {
@@ -657,6 +708,8 @@ async function volumeLeaders(recentGradTokens: string[]): Promise<{ rows: VolRow
     for (const x of j.data?.items ?? []) {
       const t = x.tokenAddress?.toLowerCase();
       if (!t || !/^0x[0-9a-f]{40}$/.test(t) || x.moderation?.visibility === "HIDDEN" || x.pairIsNative !== true) continue; // only ETH pairs compare
+      const image = gateway(x.content?.image?.uri);
+      images.set(t, image);
       const v = weiEth(x.market?.volume24hPairUnits);
       if (v === null) continue;
       const target = weiEth(x.targetPairUnits);
@@ -670,6 +723,7 @@ async function volumeLeaders(recentGradTokens: string[]): Promise<{ rows: VolRow
         graduated,
         progressBps: graduated ? 10_000 : target && reserve !== null ? Math.min(10_000, Math.round((reserve / target) * 10_000)) : null,
         taxed: true,
+        image,
       });
     }
     answered++;
@@ -1034,6 +1088,12 @@ async function build(): Promise<StateSnapshot> {
   })().catch(() => null);
 
   const [snipers, progress, volumes, door] = await Promise.all([sampleJob, progressJob, volumeJob, doorJob]);
+  // pictures: the volume reads above already know most; one batched call for the rest
+  const devTokens = devs ? [...devs.all, ...devs.week].map((d) => d.lastToken).filter((t): t is string => !!t) : [];
+  stage = "pictures";
+  await loadImages([...(door?.rows.map((r) => r.token) ?? []), ...devTokens]);
+  if (door) for (const r of door.rows) r.image = images.get(r.token) ?? null;
+  if (devs) for (const d of [...devs.all, ...devs.week]) d.lastImage = d.lastToken ? images.get(d.lastToken) ?? null : null;
   if (!progress) notes.push("vibe API did not answer for progress buckets.");
   if (!volumes) notes.push("vibe API did not answer for volumes.");
 
@@ -1168,16 +1228,23 @@ export async function chainDevCount(creator: string): Promise<ChainDevCount | nu
 /** Start (or join) a build. Never throws: a failed build leaves the last snapshot in place. */
 export function refreshState(): Promise<StateSnapshot | null> {
   if (!building) {
+    SHARED_RUN.__exitStateRunSince = Date.now();
     building = build()
       .then(async (s) => {
         snapshot = s;
+        beat("state", true);
         await toRedis(s);
         await saveDevIndex();
         return s;
       })
+      .catch((e) => {
+        beat("state", false, e);
+        throw e;
+      })
       .finally(() => {
         building = null;
         stage = "idle";
+        SHARED_RUN.__exitStateRunSince = 0;
       });
   }
   return building.catch(() => null);
@@ -1205,6 +1272,11 @@ export async function readState(waitMs = 0): Promise<StateRead> {
 /** The pending build, for after(): keeps a serverless instance alive until it lands. */
 export function pendingBuild(): Promise<unknown> | null {
   return building;
+}
+
+/** For /status: when the running build started (unix ms), or null when none runs in this process. */
+export function stateBuildSince(): number | null {
+  return SHARED_RUN.__exitStateRunSince || null;
 }
 
 /** The last snapshot (memory, then Redis); never starts a build. For the OG image. */

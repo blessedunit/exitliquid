@@ -1,5 +1,5 @@
 "use client";
-// Re-reads the status every 30 s while the tab is visible (the probes themselves are shared server-side for 15 s).
+// Re-reads the status every 60 s while the tab is visible (the probes themselves are shared server-side for 60 s).
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
