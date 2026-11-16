@@ -30,7 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const description =
     t.status === "in_line"
         ? `Exit liquidity for ${t.entry!.ahead} people ahead. ${t.entry!.behind} in line behind. Thanks for the liquidity.`
-        : "Every ponzi needs exit liquidity. We made it a leaderboard.";
+        : "Every ponzi needs exit liquidity. We made it a line.";
   const full = `${title} · ${short(address)}`;
   const canonical = `${PUBLIC_SITE_URL}/t/${address.toLowerCase()}`;
   const image = `${canonical}/twitter-image?v=${t.entry ? `p${t.entry.place}` : t.status}`;
@@ -115,12 +115,11 @@ export default async function TicketView({ params }: Props) {
             </p>
             <div className={s.ctas}>
               <CtaLink className="btn start" />
-              <Link href="/how-it-works" className={s.ghost}>How it works</Link>
             </div>
           </section>
         )}
         <div className={s.links}>
-          <Link href="/lines" className={s.ghost}>Check another address</Link>
+          <Link href="/exit" className={s.ghost}>← The $EXIT line</Link>
           <Link href={`/w/${address.toLowerCase()}`} prefetch={false} className={s.ghost}>Wallet profile →</Link>
         </div>
       </div>

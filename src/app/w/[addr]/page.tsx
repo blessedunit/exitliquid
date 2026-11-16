@@ -2,12 +2,11 @@ import type { Metadata } from "next";
 import { notFound, permanentRedirect } from "next/navigation";
 import { PUBLIC_SITE_URL } from "@/lib/config";
 import { shortAddr } from "@/lib/format";
+import { isAddress as isAddr } from "@/lib/ticket";
 import WalletProfileView from "./WalletProfileView";
-import s from "../w.module.css";
+import s from "./profile.module.css";
 
 type Props = { params: Promise<{ addr: string }> };
-
-const isAddr = (a: string) => /^0x[0-9a-fA-F]{40}$/.test(a);
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { addr } = await params;
@@ -15,7 +14,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const a = addr.toLowerCase();
   return {
     title: `Wallet ${shortAddr(a)}`,
-    description: "Tags, positions, PnL, early entries and funding of one vibe/vibe wallet. Signals, not verdicts.",
+    description: "Tags, positions, PnL, early entries, funding and launches of one vibe/vibe wallet.",
     alternates: { canonical: `${PUBLIC_SITE_URL}/w/${a}` },
     robots: { index: false }, // any address is a page: keep them out of search
   };

@@ -22,7 +22,7 @@ export type OgSprite = { src: string; w: number; h: number; flip: boolean };
 
 /** A sprite pre-scaled with nearest neighbour on disk (so satori never smooths it). */
 export async function ogSprite(skin: Skin, scale: 2 | 3 | 4 = 2, face: "right" | "left" = "right"): Promise<OgSprite> {
-  const file = path.join(process.cwd(), "public", "sprites", `${skin}@${scale}x.png`);
+  const file = path.join(process.cwd(), "public", "sprites", `${skin === "doorghost" ? "architect" : skin}@${scale}x.png`);
   const data = await readFile(file);
   const s = SPRITES[skin];
   return { src: `data:image/png;base64,${data.toString("base64")}`, w: s.w * scale, h: s.h * scale, flip: face !== s.faces };

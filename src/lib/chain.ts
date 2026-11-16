@@ -1,4 +1,4 @@
-// Server-only chain access, verified against the live testnet:
+// Server-only chain access, verified against the live testnet (research/tech.md):
 // - eth_getLogs: a single response is capped at 10,000 logs -> split the range on "exceeds limit".
 //   Since 05.10.2026 the span is capped too: 10M blocks for one address, 100k for an address list or a
 //   topic OR-list, 30k without an address (lib/logs picks the span; wallet-wide reads use Blockscout).
@@ -10,10 +10,10 @@ import { createPublicClient, http, parseAbi, pad, type Address, type Hex } from 
 import { PUBLIC_RPC_URL, CHAIN_ID, ACTIVE_TOKEN } from "./config";
 import { curveBuyCost, curvePrice, type BalanceEvent } from "./queue";
 import { getLogsChunked, SPAN_NO_ADDRESS } from "./logs";
+import { POOL_MANAGER, V1_FACTORIES, V6_FACTORIES } from "./factories";
 import { addressTokens, addressTransfers, creationTx } from "./blockscout";
 
-const BUY_FEE = 0.0125;
-const POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951"; // Uniswap V4 PoolManager (graduated vibe tokens) // vibe/vibe fee on every curve buy (paid on top of the curve cost)
+const BUY_FEE = 0.0125; // vibe/vibe fee on every curve buy (paid on top of the curve cost)
 
 const RPC_URL = process.env.EXIT_RPC_URL || PUBLIC_RPC_URL; // server only (may carry an API key)
 
@@ -29,11 +29,8 @@ export const client = createPublicClient({
   transport: http(RPC_URL, { timeout: 20_000, retryCount: 2, retryDelay: 400 }),
 });
 
-const FACTORY: Address = "0x40f1be6faf8DAB9C143cce1a0A04c2075Fb2DF59";
-const LEGACY_FACTORY: Address = "0xB5B7A2f6c4EAFa2D73918fcA32d50e2126339eb9";
-// the first curve factory (Aug 2026, ~14.8k launches): same LaunchCreated layout and curve ABI,
-// vibe's /launches/<token> knows its tokens (checked 01.10 on GMCO68), only its lists leave them out
-const FIRST_FACTORY: Address = "0x4febc267e0c24440bcdef72b5dbc5fe7bed091df";
+// factories: src/data/factories.json. The first curve factory (Aug 2026, ~14.8k launches) has the same
+// LaunchCreated layout and curve ABI; vibe's /launches/<token> knows its tokens, only its lists leave them out
 const LAUNCH_CREATED = "0x56eef5c350583250e71791d6d659f4d181796c9deb08b977252efc3995aa9279" as Hex;
 const SEL_CURVE_SUPPLY = "0xbda57323" as Hex;
 const ZERO = "0x0000000000000000000000000000000000000000";
@@ -84,7 +81,7 @@ export function cachedCreation(token: string): { block: number; curve: string; c
 // ("narrow the block range"). Every "whole history" read goes through these helpers: fixed spans,
 // a few at a time, newest first when we only need the first hit.
 export const LOG_SPAN = 9_500_000;
-const FACTORIES_ALL: Address[] = [FACTORY, LEGACY_FACTORY, FIRST_FACTORY];
+const FACTORIES_ALL = V1_FACTORIES;
 let headMemo: { at: number; block: number } | null = null;
 export async function headBlock(): Promise<number> {
   if (headMemo && Date.now() - headMemo.at < 15_000) return headMemo.block;
@@ -132,6 +129,10 @@ export async function launchLog(token: string): Promise<AnyLog | null> {
   } catch {
     // Blockscout or the receipt failed: the slices below decide
   }
+  // an address with no code is no token: answer without ~100 log reads (a random address per request was a cheap
+  // way to burn the shared RPC budget)
+  const code = await client.getCode({ address: token as Address }).catch(() => undefined);
+  if (code !== undefined && (!code || code === "0x")) return null;
   const head = await headBlock();
   const topics = [LAUNCH_CREATED, null, pad(token as Address)];
   for (let b = head; b >= 0; b -= LOG_SPAN) {
@@ -150,15 +151,16 @@ export async function launchLog(token: string): Promise<AnyLog | null> {
 // The taxed v6 factory (Oct 2026): LaunchCreated(id, launcher, token indexed; curve in data), a different
 // layout and topic from the curve factories above (same as lib/state.ts LC_V6). Kept out of launchLog() so
 // callers that parse the v1 layout are never handed a v6 log.
-const V6_FACTORY = "0xe794217880011f9ca6961340ed5c16ec9559fea0";
+// vibe moved v6 launches to a second factory on 06.11 (deployed block 149_342_691, the first one went quiet ~07.11):
+// same event and layout, so both are read; `from` = a little before each one's first launch
+const V6_FACTORY_SET = new Set(V6_FACTORIES.map((f) => f.address));
 const V6_LAUNCH_CREATED = "0xa7e8032bfd07a9fbcde50eabe91eb2901faee6dbddd9cced579491d9b07ef5c8";
-const V6_FROM = 126_000_000; // a little before its first launch (measured 01.10)
 
 /** A taxed v6 launch's creation: block, curve, creator. null = the v6 factory never launched it; throws = unknown. */
 export async function v6LaunchCreation(token: string): Promise<{ block: number; curve: string; creator: string } | null> {
   const want = pad(token.toLowerCase() as Address).toLowerCase();
   const parse = (l: AnyLog) => ({ block: Number(BigInt(l.blockNumber)), curve: `0x${l.data.slice(26, 66)}`.toLowerCase(), creator: `0x${l.topics[2].slice(26)}`.toLowerCase() });
-  const isHit = (l: AnyLog) => l.address.toLowerCase() === V6_FACTORY && l.topics?.[0]?.toLowerCase() === V6_LAUNCH_CREATED && l.topics?.[3]?.toLowerCase() === want;
+  const isHit = (l: AnyLog) => V6_FACTORY_SET.has(l.address.toLowerCase()) && l.topics?.[0]?.toLowerCase() === V6_LAUNCH_CREATED && l.topics?.[3]?.toLowerCase() === want;
   try {
     const tx = await creationTx(token);
     if (tx) {
@@ -172,11 +174,14 @@ export async function v6LaunchCreation(token: string): Promise<{ block: number; 
     // Blockscout or the receipt failed: the log slices below decide
   }
   const head = await headBlock();
-  for (let a = V6_FROM; a <= head; a += LOG_SPAN) {
-    const b = Math.min(head, a + LOG_SPAN - 1);
-    const got = (await client.request({ method: "eth_getLogs", params: [{ address: V6_FACTORY, topics: [V6_LAUNCH_CREATED, null, null, want], fromBlock: hexN(a), toBlock: hexN(b) }] } as never)) as AnyLog[];
-    const hit = got.find(isHit);
-    if (hit) return parse(hit);
+  // newest factory first (where fresh launches are); one address per query keeps the node's wide getLogs window
+  for (const f of [...V6_FACTORIES].reverse()) {
+    for (let a = f.from; a <= head; a += LOG_SPAN) {
+      const b = Math.min(head, a + LOG_SPAN - 1);
+      const got = (await client.request({ method: "eth_getLogs", params: [{ address: f.address, topics: [V6_LAUNCH_CREATED, null, null, want], fromBlock: hexN(a), toBlock: hexN(b) }] } as never)) as AnyLog[];
+      const hit = got.find(isHit);
+      if (hit) return parse(hit);
+    }
   }
   return null;
 }
@@ -199,6 +204,8 @@ async function findCreation(token: string): Promise<Created | null | "unknown"> 
       curve: `0x${l.topics[3].slice(26)}`.toLowerCase(),
       creator: `0x${l.data.slice(2 + 24, 2 + 64)}`.toLowerCase(), // first data word
     };
+    // capped: the oldest entry goes (a Map keeps insertion order); it is simply looked up again when asked
+    if (createdCache.size >= 20_000) createdCache.delete(createdCache.keys().next().value as string);
     createdCache.set(token, c);
     return c;
   } catch {
@@ -287,7 +294,7 @@ type Cache = {
 };
 
 const caches = new Map<string, Cache>();
-const MAX_TOKEN_CACHES = 80;
+const MAX_TOKEN_CACHES = 180; // above the screener universe (~150): below it every cycle re-read the evicted tokens from block 0
 const inflight = new Map<string, Promise<Cache>>();
 
 type TransferLog = { args: { from?: string; to?: string; value?: bigint }; blockNumber: bigint | null; logIndex: number | null; transactionHash: Hex | null };

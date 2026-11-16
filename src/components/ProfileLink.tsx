@@ -1,16 +1,16 @@
 "use client";
-// A small pixel "person" icon that opens a wallet's profile on this site (/w/<addr>) or a creator's
-// Dev Passport (/dev/<addr>). It is its own target on purpose: rows that open a ticket on click keep doing so
+// A small pixel "person" icon that opens a wallet's profile on this site (/w/<addr>; a creator's opens on its
+// launches). It is its own target on purpose: rows that open a ticket on click keep doing so
 // (the row handlers skip clicks that land on an <a> or <button>), and this icon never starts that.
 import Link from "next/link";
 import styles from "./ProfileLink.module.css";
 
 export function profileHref(addr: string, kind: "w" | "dev" = "w") {
-  return `/${kind}/${addr.toLowerCase()}`;
+  return `/w/${addr.toLowerCase()}${kind === "dev" ? "#launches" : ""}`;
 }
 
 export default function ProfileLink({ addr, kind = "w", className }: { addr: string; kind?: "w" | "dev"; className?: string }) {
-  const what = kind === "dev" ? "Dev passport" : "Wallet profile";
+  const what = kind === "dev" ? "Dev's wallet profile" : "Wallet profile";
   return (
     <Link
       href={profileHref(addr, kind)}

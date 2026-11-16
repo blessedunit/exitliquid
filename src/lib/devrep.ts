@@ -3,13 +3,13 @@
 import "server-only";
 import { CHAIN_ID } from "./config";
 import { BoundedTtlMap } from "./bounded";
-import { explorer, funding, isHub, KNOWN_HUBS, HUB_CHILDREN, type Funding } from "./holders";
-import { earlyIndex, earlyIndexAgeSec, perIndex } from "@/lib/earlyIndex";
+import { earlyIndexAgeSec, perIndex } from "@/lib/earlyIndex";
 import { chainDevCount, type ChainDevCount } from "./state";
 import { addressTransfers } from "./blockscout";
+import { POOL_MANAGER } from "./factories";
 
 const API = `https://testnet.vibevibe.fun/api/v1/chains/${CHAIN_ID}`;
-const HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.fun", "user-agent": "Mozilla/5.0" };
+const HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.fun", "user-agent": "exitliquid.fun (read-only directory)" };
 const TTL_S = 600; // 10 min: a dev's history changes slowly
 
 export type DevLaunch = {
@@ -175,7 +175,7 @@ export async function devReputation(creator: string): Promise<DevRep> {
 }
 
 /* ======================================================================================
- * Dev Passport (/dev/<addr>): the whole history of one creator, facts only.
+ * Dev passport (the "Launches created" block of /w/<addr>): the whole history of one creator, facts only.
  *
  * Costs per creator (cold), all cached:
  * - vibe: 1 call per 100 launches (max 3 pages) + 1 call for creator fees. 5 min.
@@ -186,7 +186,6 @@ export async function devReputation(creator: string): Promise<DevRep> {
  * Unknown is never zero: every number that could not be read is null and the page says why.
  * ====================================================================================== */
 
-const POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951"; // graduated tokens trade in the V4 pool
 const ZERO_ADDR = "0x0000000000000000000000000000000000000000";
 const MAX_PAGES = 3; // 300 launches: enough for the page, bounded for vibe
 const PASSPORT_TTL = 300_000;
@@ -194,12 +193,7 @@ const PASSPORT_TTL = 300_000;
 const LIST_REVALIDATE_S = 300;
 /** last good passport per creator: served (marked stale) when vibe fails, instead of "not answering" */
 const LAST_GOOD_TTL = 24 * 3600_000;
-const LINKED_TTL = 1_800_000;
-const SIBLING_CHECKS = 8; // vibe calls for "did this linked wallet launch tokens?"
-const LINK_LIST_MAX = 40; // wallets shown per linked list
-const SENDER_HUB_CHECKS = 3; // explorer counters calls for "is this ETH sender a hub?"
 const FAST_SELL_S = 600;
-const INDEX_MAX_AGE = 14 * 86_400;
 
 const isAddr = (a: string) => /^0x[0-9a-f]{40}$/.test(a);
 
@@ -221,21 +215,6 @@ export function walletTags(a: string): WalletTags {
 }
 /** seconds since the Early Index was built */
 export const earlyIndexAge = () => earlyIndexAgeSec();
-
-/** at most `n` promises at once, order kept */
-async function pool<T, R>(items: T[], n: number, fn: (x: T) => Promise<R>): Promise<R[]> {
-  const out: R[] = new Array(items.length);
-  let next = 0;
-  await Promise.all(
-    Array.from({ length: Math.min(n, items.length) }, async () => {
-      while (next < items.length) {
-        const i = next++;
-        out[i] = await fn(items[i]);
-      }
-    }),
-  );
-  return out;
-}
 
 /* ---------------- vibe: every launch (up to 300) + fees ---------------- */
 
@@ -597,268 +576,3 @@ export async function devPassport(creator: string): Promise<DevPassport> {
   return p;
 }
 
-/* ---------------- linked wallets (funding cluster) ---------------- */
-
-export type LinkedWallet = {
-  address: string;
-  tags: WalletTags;
-  /** launches on vibe/vibe; null = not checked (budget) or vibe failed — see launchesChecked */
-  launches: number | null;
-  launchesChecked: boolean;
-  /** how many of THIS dev's launches the wallet received tokens on; null = unknown */
-  boughtDevLaunches: number | null;
-};
-
-export type DevLinks = {
-  creator: string;
-  /** how the dev got its first ETH; null = explorer failed (unknown) */
-  funding: Funding | null;
-  funder: (LinkedWallet & { hub: boolean | null }) | null;
-  /** other wallets the funder sent ETH to (oldest first, capped) */
-  siblings: LinkedWallet[];
-  siblingsSeen: number;
-  /** the funder's history is longer than what we read */
-  siblingsCut: boolean;
-  /** wallets the dev itself sent plain ETH to */
-  funded: LinkedWallet[];
-  fundedSeen: number;
-  fundedCut: boolean;
-  /** wallets that sent the dev plain ETH (any time in the read window), hubs dropped; ETH summed */
-  senders: (LinkedWallet & { eth: number; txs: number })[];
-  sendersSeen: number;
-  /** senders left out because they are hubs (faucet, exchange, bot hub) */
-  sendersHubs: number;
-  /** parts that failed: "funding" | "hub" | "siblings" | "funded" | "launches" | "bought" */
-  unknown: string[];
-  updatedAt: number;
-};
-
-type BsTx = { from?: string; to?: string; value?: string; isError?: string; input?: string };
-type BsList = { status?: string; message?: string; result?: BsTx[] | string };
-
-async function bsList(action: "txlist" | "txlistinternal", address: string, n: number): Promise<BsTx[]> {
-  const j = await explorer<BsList>(`/api?module=account&action=${action}&address=${address}&sort=asc&page=1&offset=${n}`);
-  if (Array.isArray(j.result)) return j.result;
-  if (j.status === "0" && /^No (internal )?transactions found/i.test(String(j.message ?? ""))) return [];
-  throw new Error("explorer: bad answer");
-}
-
-/** distinct wallets that got ETH from `from`; contract calls are skipped (a buy pays the curve, not a person) */
-function recipients(txs: BsTx[], from: string, plainOnly: boolean): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const x of txs) {
-    const f = x.from?.toLowerCase();
-    const t = x.to?.toLowerCase();
-    if (f !== from || !t || !isAddr(t) || t === from || seen.has(t)) continue;
-    if (x.isError === "1" || !/^\d+$/.test(x.value ?? "") || BigInt(x.value!) === 0n) continue;
-    if (plainOnly && x.input && x.input !== "0x") continue;
-    seen.add(t);
-    out.push(t);
-  }
-  return out;
-}
-
-const launchCounts = new BoundedTtlMap<number>(20_000);
-async function launchCount(addr: string): Promise<number | null> {
-  const hit = launchCounts.get(addr);
-  if (hit !== undefined) return hit;
-  try {
-    const j = await vibeJson<{ data?: { items?: unknown[]; page?: { totalCount?: number; hasMore?: boolean } } }>(
-      `/launches?creatorAddress=${addr}&limit=1&offset=0`,
-      6_000,
-    );
-    const items = j.data?.items;
-    if (!Array.isArray(items)) return null;
-    const tc = Number(j.data?.page?.totalCount);
-    const v1 = j.data?.page?.totalCount !== undefined && Number.isFinite(tc) ? tc : !j.data?.page?.hasMore ? items.length : null;
-    if (v1 === null) return null;
-    // + taxed v6 launches (their own list): a v6-only dev must not read as "launched 0"
-    const v6 = await v6Launches(addr, 3_600);
-    if (v6.total === null) return null;
-    const n = v1 + v6.total;
-    launchCounts.set(addr, n, 3_600_000);
-    return n;
-  } catch {
-    return null;
-  }
-}
-
-const linksMemo = new BoundedTtlMap<DevLinks>(1_000);
-const linksInflight = new Map<string, Promise<DevLinks>>();
-
-async function loadLinks(creator: string): Promise<DevLinks> {
-  const unknown: string[] = [];
-  // 1) the dev's first funder (holders.ts: faucet / bridge / L1-alias aware, cached forever)
-  const f = await funding(creator);
-  if (!f) unknown.push("funding");
-
-  // 2) the funder's other children, unless it is a hub (faucet, exchange, bot hub)
-  let funder: DevLinks["funder"] = null;
-  let siblingAddrs: string[] = [];
-  let siblingsSeen = 0;
-  let siblingsCut = false;
-  if (f?.kind === "source") {
-    const hub = KNOWN_HUBS.has(f.from) ? true : await isHub(f.from);
-    funder = { address: f.from, tags: walletTags(f.from), launches: null, launchesChecked: false, boughtDevLaunches: null, hub };
-    if (hub === null) unknown.push("hub");
-    if (hub !== true) {
-      try {
-        const [txs, internal] = await Promise.all([bsList("txlist", f.from, 200), bsList("txlistinternal", f.from, 200)]);
-        const kids = [...new Set([...recipients(txs, f.from, true), ...recipients(internal, f.from, false)])].filter((a) => a !== creator);
-        siblingsSeen = kids.length;
-        siblingsCut = txs.length >= 200 || internal.length >= 200;
-        if (kids.length > HUB_CHILDREN) funder.hub = true; // funded a crowd: a hub, not a cluster
-        else siblingAddrs = kids;
-      } catch {
-        unknown.push("siblings");
-      }
-    }
-  }
-
-  // 3) the dev's own plain ETH transfers, both ways (one list): who the dev funded, who topped the dev up.
-  // Most devs start from the public faucet, so the first funder alone often says nothing; a later top-up can.
-  let fundedAddrs: string[] = [];
-  let fundedSeen = 0;
-  let fundedCut = false;
-  const sendAcc = new Map<string, { wei: bigint; txs: number }>();
-  try {
-    const txs = await bsList("txlist", creator, 200);
-    fundedAddrs = recipients(txs, creator, true).filter((a) => a !== funder?.address);
-    fundedSeen = fundedAddrs.length;
-    fundedCut = txs.length >= 200;
-    for (const x of txs) {
-      const from = x.from?.toLowerCase() ?? "";
-      // the first funder has its own row above; the faucet says nothing
-      if (x.to?.toLowerCase() !== creator || !isAddr(from) || from === creator || from === funder?.address || KNOWN_HUBS.has(from)) continue;
-      if (x.isError === "1" || !/^\d+$/.test(x.value ?? "") || BigInt(x.value!) === 0n || (x.input && x.input !== "0x")) continue;
-      const a = sendAcc.get(from) ?? { wei: 0n, txs: 0 };
-      a.wei += BigInt(x.value!);
-      a.txs++;
-      sendAcc.set(from, a);
-    }
-  } catch {
-    unknown.push("funded");
-  }
-  // the biggest senders first; the top few are checked for hubs (cached), hubs are dropped
-  const sendersAll = [...sendAcc.entries()].sort((a, b) => (b[1].wei > a[1].wei ? 1 : b[1].wei < a[1].wei ? -1 : 0));
-  const hubFlags = await pool(sendersAll.slice(0, SENDER_HUB_CHECKS), 3, ([a]) => isHub(a));
-  let sendersHubs = 0;
-  const senderList = sendersAll.filter(([, ], i) => {
-    if (i < SENDER_HUB_CHECKS && hubFlags[i] === true) {
-      sendersHubs++;
-      return false;
-    }
-    return true;
-  });
-
-  const mk = (a: string): LinkedWallet => ({ address: a, tags: walletTags(a), launches: null, launchesChecked: false, boughtDevLaunches: null });
-  const siblings = siblingAddrs.slice(0, LINK_LIST_MAX).map(mk);
-  const funded = fundedAddrs.slice(0, LINK_LIST_MAX).map(mk);
-  const senders = senderList.slice(0, LINK_LIST_MAX).map(([a, v]) => ({ ...mk(a), eth: Number(v.wei / 10n ** 12n) / 1e6, txs: v.txs }));
-
-  // 4) who of them launched tokens: a few small vibe calls, the funder first
-  const toCheck: LinkedWallet[] = [...(funder && funder.hub !== true ? [funder] : []), ...senders.slice(0, 3), ...siblings].slice(0, SIBLING_CHECKS);
-  await pool(toCheck, 3, async (w) => {
-    w.launches = await launchCount(w.address);
-    w.launchesChecked = true;
-  });
-  if (toCheck.some((w) => w.launches === null)) unknown.push("launches");
-
-  // 5) did any linked wallet get tokens of this dev's launches? Blockscout: each wallet's incoming transfers back
-  // to the dev's oldest launch (a few pages each); a wallet whose history runs past the cap stays unknown (null)
-  const linked: LinkedWallet[] = [...(funder && funder.hub !== true ? [funder] : []), ...siblings, ...funded, ...senders];
-  if (linked.length) {
-    try {
-      const rep = await devPassport(creator);
-      const tokens = new Set(rep.launches.map((l) => l.token.toLowerCase()));
-      const times = rep.launches.map((l) => l.createdAt).filter((t) => t > 0);
-      const since = times.length === rep.launches.length && times.length ? Math.min(...times) - LAUNCH_MARGIN_S : undefined;
-      const addrs = [...new Set(linked.map((w) => w.address))];
-      let failed = false;
-      const counts = new Map<string, number | null>();
-      await pool(addrs, 4, async (a) => {
-        try {
-          const r = await addressTransfers(a, { filter: "to", maxPages: 4, stopBeforeTs: since });
-          const got = new Set(r.items.filter((t) => tokens.has(t.token)).map((t) => t.token));
-          // an incomplete read still proves the tokens it found; zero found on a partial read is unknown
-          counts.set(a, r.complete || got.size ? got.size : null);
-        } catch {
-          failed = true;
-          counts.set(a, null);
-        }
-      });
-      for (const w of linked) w.boughtDevLaunches = counts.get(w.address) ?? null;
-      if (failed || [...counts.values()].some((v) => v === null)) unknown.push("bought");
-    } catch {
-      unknown.push("bought");
-    }
-  }
-
-  return {
-    creator, funding: f, funder, siblings, siblingsSeen, siblingsCut, funded, fundedSeen, fundedCut,
-    senders, sendersSeen: senderList.length, sendersHubs, unknown, updatedAt: Date.now(),
-  };
-}
-
-/** Never throws for a valid address: failed parts are listed in `unknown`. */
-export async function devLinks(creator: string): Promise<DevLinks> {
-  const c = creator.toLowerCase();
-  if (!isAddr(c)) throw new Error("bad address");
-  const hit = linksMemo.get(c);
-  if (hit) return hit;
-  const running = linksInflight.get(c);
-  if (running) return running;
-  const p = loadLinks(c)
-    .then((v) => {
-      linksMemo.set(c, v, v.unknown.length ? 120_000 : LINKED_TTL);
-      return v;
-    })
-    .finally(() => linksInflight.delete(c));
-  linksInflight.set(c, p);
-  return p;
-}
-
-/* ---------------- lookup landings (/w, /dev): real examples only, never a made-up address ---------------- */
-
-export type RecentDev = {
-  creator: string;
-  /** launches as vibe (or the chain, when higher) reports them; null = unknown right now */
-  launches: number | null;
-  graduated: number | null;
-  last: { token: string; symbol: string; createdAt: number; progressBps: number; graduated: boolean; hidden: boolean };
-};
-
-/** Creators of the newest launches, with their counts. [] when vibe does not answer (the page hides the block). */
-export async function recentDevs(n = 5, budgetMs = 2_500): Promise<RecentDev[]> {
-  const { launchPage } = await import("./launches");
-  const page = await Promise.race([launchPage("new", "", null, 24, 60).catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), budgetMs))]);
-  if (!page) return [];
-  const seen = new Set<string>();
-  const picks = page.items.filter((l) => {
-    const c = l.creator;
-    if (!isAddr(c) || seen.has(c)) return false;
-    seen.add(c);
-    return true;
-  }).slice(0, n);
-  const reps = await Promise.all(
-    picks.map((l) => Promise.race([devReputation(l.creator).catch(() => null), new Promise<null>((r) => setTimeout(() => r(null), budgetMs))])),
-  );
-  return picks.map((l, i) => {
-    const rep = reps[i];
-    const total = rep ? (rep.total ?? null) : null;
-    return {
-      creator: l.creator,
-      launches: rep ? Math.max(total ?? rep.loaded, rep.onChain?.launches ?? 0, 1) : null, // it made at least the launch we see
-      graduated: rep ? Math.max(rep.graduated, rep.onChain?.grads ?? 0) : null,
-      last: { token: l.token, symbol: l.symbol, createdAt: l.createdAt, progressBps: l.progressBps, graduated: l.graduated, hidden: false },
-    };
-  });
-}
-
-/** A wallet on the Early Index sniper list; null when the index is too old to trust (labels unknown). */
-export function exampleSniper(): string | null {
-  if (earlyIndexAge() > INDEX_MAX_AGE) return null;
-  const w = earlyIndex().snipers.find((x) => isAddr(x.toLowerCase()));
-  return w ? w.toLowerCase() : null;
-}

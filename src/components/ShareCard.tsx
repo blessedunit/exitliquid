@@ -23,12 +23,12 @@ type Props = {
 };
 
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
-const PATH: Record<ShareKind, string> = { line: "/line/", wallet: "/w/", dev: "/dev/" };
+const PATH: Record<ShareKind, string> = { line: "/line/", wallet: "/w/", dev: "/w/" };
 
 /** X text: short, no promises, the tag and nothing else (the link goes in its own parameter) */
 function postText(kind: ShareKind, id: string, symbol: string | null, grade: string | null): string {
   const sym = symbol ? `$${symbol.replace(/[^\x20-\x7e]/g, "").slice(0, 16)}` : short(id);
-  if (kind === "line") return grade ? `${sym} Line Health: ${grade}. Who stands at the front of the line. Signals, not verdicts. #vibevibe` : `${sym}: who stands at the front of the line. Signals, not verdicts. #vibevibe`;
+  if (kind === "line") return grade ? `${sym} is graded ${grade}: snipers, dev and volume checked. #vibevibe` : `${sym}: snipers, dev and volume checked. #vibevibe`;
   if (kind === "wallet") return `Wallet ${short(id)} on vibe/vibe: tags, PnL, early entries. #vibevibe`;
   return `Dev ${short(id)} on vibe/vibe: launches, graduations, dev sells. #vibevibe`;
 }

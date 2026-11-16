@@ -16,7 +16,7 @@
 import "server-only";
 import { parseAbi, type Address, type Hex } from "viem";
 import { client, launchLog, ZERO, type RawTransfer } from "./chain";
-import { PLUMBING } from "./service";
+import { PLUMBING, POOL_MANAGER, V1_FACTORIES } from "./factories";
 import { computeHealth, type Grade } from "./health";
 import { BoundedTtlMap } from "./bounded";
 import { getLogsChunked, SPAN_LIST, SPAN_SINGLE } from "./logs";
@@ -47,10 +47,9 @@ export type TokenSignal = {
 };
 
 // main, legacy and the first curve factory (same LaunchCreated layout; see lib/chain)
-const FACTORIES: Address[] = ["0x40f1be6faf8DAB9C143cce1a0A04c2075Fb2DF59", "0xB5B7A2f6c4EAFa2D73918fcA32d50e2126339eb9", "0x4febc267e0c24440bcdef72b5dbc5fe7bed091df"];
+const FACTORIES = V1_FACTORIES;
 const LAUNCH_CREATED = "0x56eef5c350583250e71791d6d659f4d181796c9deb08b977252efc3995aa9279";
 const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-const POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
 const FIRST = 20; // same as lib/health
 const BONUS_SCAN = 50; // same as lib/health: verified-early wallets count anywhere in the first 50
 const HOUR_BLOCKS = 22_000; // same as lib/health

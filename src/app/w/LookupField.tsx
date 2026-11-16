@@ -1,7 +1,6 @@
 "use client";
-// The one "paste an address" form of /w, /dev and /lines: same 52 px field, one primary button,
-// an optional quiet secondary action under it (e.g. "or Connect a wallet"), the error line.
-// Controlled: the page owns the value and what a submit does.
+// The "paste an address" form of /w: one field, one primary button, the error line.
+// Controlled: the caller owns the value and what a submit does.
 import s from "./w.module.css";
 
 export default function LookupField({
@@ -13,9 +12,6 @@ export default function LookupField({
   onChange,
   onSubmit,
   error = null,
-  busy = false,
-  busyCta,
-  after,
 }: {
   id: string;
   label: string;
@@ -25,10 +21,6 @@ export default function LookupField({
   onChange: (v: string) => void;
   onSubmit: (v: string) => void;
   error?: string | null;
-  busy?: boolean;
-  busyCta?: string;
-  /** quiet line under the field: an alternative action, or examples */
-  after?: React.ReactNode;
 }) {
   return (
     <div className={s.lookupWrap}>
@@ -54,10 +46,9 @@ export default function LookupField({
           aria-invalid={error ? true : undefined}
           aria-describedby={error ? `${id}-err` : undefined}
         />
-        <button type="submit" className="btn start" disabled={busy}>{busy && busyCta ? busyCta : cta}</button>
+        <button type="submit" className="btn start">{cta}</button>
       </form>
       {error && <p id={`${id}-err`} className={s.lookupErr} role="alert">{error}</p>}
-      {after}
     </div>
   );
 }

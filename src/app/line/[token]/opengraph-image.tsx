@@ -1,4 +1,4 @@
-// Share card of a token line: ticker + picture, the Line Health letter and four facts in words.
+// Share card of a token line: ticker + picture, the grade (the same one the page shows) and four facts in words.
 // Data: the vibe directory (launchInfo, cached 10 min) and the analytics engine's own cache (the same answer the
 // page polls), under a short budget. What isn't back in time is drawn as "—", never as 0.
 import { headers } from "next/headers";
@@ -6,12 +6,16 @@ import { isAddress } from "@/lib/ticket";
 import { ACTIVE_TOKEN } from "@/lib/config";
 import { launchInfo } from "@/lib/launches";
 import { v6Launch } from "@/lib/v6";
-import { analyticsFor } from "@/lib/analytics/engine";
+import { analyticsFor, NotVibeError } from "@/lib/analytics/engine";
+import { analyticsV6, isKnownV6 } from "@/lib/analytics/v6engine";
 import { buildFor } from "@/lib/service";
 import { pct } from "@/lib/format";
+import { devTrackOf, ON_CF, snapshot } from "@/lib/screener";
+import { screen } from "@/lib/screener-rules";
+import { VERDICT_LABEL } from "@/lib/screener-types";
 import { cachedCard, CardFrame, clean, crowd, pixelAvatar, shortA, within, type CardChip, type CardFact, type Tone } from "@/lib/shareCard";
 
-export const alt = "Line Health card: grade and front-of-line signals of a vibe/vibe token";
+export const alt = "Grade and front-of-line signals of a vibe/vibe token";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -25,12 +29,13 @@ export default async function Image({ params }: { params: Promise<{ token: strin
   const token = raw.toLowerCase();
   if (token === ACTIVE_TOKEN) return new Response(null, { status: 307, headers: { location: "/exit/opengraph-image", "cache-control": "public, max-age=600" } });
 
-  return cachedCard(await headers(), `line:${token}`, async () => {
+  return cachedCard(await headers(), `line:g:${token}`, async () => {
     // buildFor is the line the analytics build reads first (one shared job): its curve progress is the chain's,
     // the same number the page shows (vibe's directory can lag by many points)
     const [info, a, built, people] = await Promise.all([
       within(launchInfo(token), 2_500),
-      within(analyticsFor(token), BUDGET_MS),
+      // the same routing as /api/analytics: a token no v1 factory launched is read as a taxed v6 launch
+      within(isKnownV6(token) ? analyticsV6(token) : analyticsFor(token).catch((e) => { if (e instanceof NotVibeError) return analyticsV6(token); throw e; }), BUDGET_MS),
       within(buildFor(token), BUDGET_MS),
       crowd(["hood", "bag", "plain"]),
     ]);
@@ -50,9 +55,10 @@ export default async function Image({ params }: { params: Promise<{ token: strin
 
     const facts: CardFact[] = [];
     // 1. snipers in the first buyers
-    if (h && h.snipers !== null) {
+    const old = !!a && !!a.indexWindowDays && a.ageSec != null && a.ageSec > a.indexWindowDays * 86_400;
+    if (h && h.snipers !== null && !old) {
       facts.push({ value: String(h.snipers), label: `${h.snipers === 1 ? "sniper" : "snipers"} in first ${h.firstBuyers}`, tone: h.snipers >= 12 ? "bad" : h.snipers >= 6 ? "warn" : "good" });
-    } else facts.push({ value: "—", label: "snipers: unknown" });
+    } else facts.push({ value: "—", label: old ? "snipers: not checked" : "snipers: unknown" });
     // 2. the dev's bag
     if (supply && supply.creatorPct !== null) {
       const sold = supply.devSells !== null && supply.devSells > 0;
@@ -76,9 +82,21 @@ export default async function Image({ params }: { params: Promise<{ token: strin
     const nHolders = supply?.holders ?? (typeof info?.holders === "number" ? info.holders : null);
     const holders = nHolders !== null ? `${nHolders.toLocaleString("en-US")} holders` : null;
     const subtitle = [name, holders].filter(Boolean).join(" · ");
-    const big = h
-      ? { value: h.grade, label: "LINE HEALTH", sub: `${h.score}/100${h.partial ? " · partial" : ""}`, tone: gradeTone(h.grade), letter: true }
-      : { value: "?", label: "LINE HEALTH", sub: v6 ? "taxed v6 launch: not graded" : "not read yet", tone: "plain" as Tone, letter: true };
+    // the letter the page shows: the screener's row (same rules, with the dev's track and the age), else the same
+    // rules on this answer; Line health only when neither is in
+    const row = ON_CF ? null : snapshot().tokens.find((r) => r.token === token && r.grade !== null) ?? null;
+    let graded: { grade: string | null; score: number | null; verdict: keyof typeof VERDICT_LABEL } | null = row;
+    if (!graded && a) {
+      // the page's inputs: the answer's own age and index window (screen() reads them) and the dev's track record
+      const dev = Object.entries(a.tags).find(([, v]) => v === "dev")?.[0] ?? info?.creator ?? null;
+      const track = dev ? (await within(devTrackOf(dev.toLowerCase(), token), 3_000)) ?? null : null;
+      try { graded = screen({ a, ageMin: null, track, ethUsd: null }); } catch { graded = null; }
+    }
+    const big = graded && graded.grade && graded.score !== null
+      ? { value: graded.grade, label: "GRADE", sub: `${graded.score}/100 · ${VERDICT_LABEL[graded.verdict]}`, tone: gradeTone(graded.grade), letter: true }
+      : graded && graded.verdict === "unknown"
+      ? { value: "?", label: "GRADE", sub: VERDICT_LABEL.unknown, tone: "plain" as Tone, letter: true }
+      : { value: "?", label: "GRADE", sub: "not read yet", tone: "plain" as Tone, letter: true };
 
     const full = !!(info && h && bundle && supply && (avatar !== null || !info.image));
     return {

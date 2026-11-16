@@ -1,20 +1,21 @@
 "use client";
 
 // State of vibe: the board. Data comes from /api/state (one snapshot, rebuilt every ~15 min on the server).
-// Layout: head (H1, computed lead, snapshot stamp) → 4 KPIs → sticky section tabs → paired blocks → full-width tables → method.
+// Layout: head (H1, snapshot stamp) → 4 KPIs → launches, graduations, time to graduation, snipers, top devs, volume.
 // No boxes: every block is a title + a meta line (what, source, time) on the page background, separated by hairlines.
 // Unknown is "—" with a reason, never 0.
 import Link from "next/link";
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import type { DayRow, DevRow, DoorRow, Src, StateSnapshot, VolRow } from "@/lib/state";
+import { createContext, useContext, useEffect, useState } from "react";
+import type { DayRow, DevRow, Src, StateSnapshot, VolRow } from "@/lib/state";
 import { fmtCompact, fmtEth, fmtInt, shortAddr } from "@/lib/format";
-import { fmtDur, fmtShare, stateHeadline } from "./headline";
+import { fmtDur, fmtShare } from "./headline";
 import PageHead from "@/components/PageHead";
-import SectionTabs from "@/components/ui/SectionTabs";
-import ShowMore from "@/components/ui/ShowMore";
 import TokenAvatar from "@/components/TokenAvatar";
 import Term from "@/components/ui/Term";
+import Unreadable from "@/components/token/Unreadable";
+import { useTries } from "@/components/useTries";
 import type { GlossaryId } from "@/lib/glossary";
+import Loader, { shimmer } from "@/components/ui/Loader";
 import s from "./state.module.css";
 
 const FRESH_MS = 15 * 60_000;
@@ -23,15 +24,6 @@ const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct
 const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const UNKNOWN = "Unknown, not zero.";
 
-const SECTIONS = [
-  { id: "activity", label: "Activity" },
-  { id: "graduation", label: "Graduation" },
-  { id: "snipers", label: "Snipers" },
-  { id: "devs", label: "Top devs" },
-  { id: "after", label: "After graduation" },
-  { id: "volume", label: "Volume" },
-  { id: "method", label: "Method" },
-];
 
 /* ------------------------------------------------------------------ formatting */
 
@@ -44,18 +36,6 @@ const utcTime = (ts: number) => {
   return `${String(d.getUTCHours()).padStart(2, "0")}:${String(d.getUTCMinutes()).padStart(2, "0")} UTC`;
 };
 const utcStamp = (ts: number) => `${utcDay(ts).md} · ${utcTime(ts)}`;
-
-function fmtRet(x: number | null | undefined): string {
-  if (x === null || x === undefined || !Number.isFinite(x)) return "—";
-  const p = x * 100;
-  if (Math.abs(p) < 0.05) return "0%";
-  const sign = p > 0 ? "+" : "−";
-  const a = Math.abs(p);
-  return `${sign}${a >= 100 ? a.toFixed(0) : a.toFixed(1)}%`;
-}
-const retClass = (x: number | null | undefined) => (x === null || x === undefined || Math.abs(x) < 0.0005 ? "" : x > 0 ? s.up : s.down);
-
-const ago = (ts: number, now: number) => fmtDur(Math.max(0, now - ts));
 
 /* ------------------------------------------------------------------ pieces */
 
@@ -207,7 +187,7 @@ function Launches({ d }: { d: StateSnapshot }) {
       {d.days && d.days.some((x) => x.launches) ? (
         <DayBars days={d.days} pick={(x) => x.launches} unit="Launches" />
       ) : (
-        <Unknown why="Factory logs did not load this round. Retrying on the next build." />
+        <Unknown why="Factory logs did not load this round." />
       )}
     </Panel>
   );
@@ -263,35 +243,6 @@ function TimeToGrad({ d }: { d: StateSnapshot }) {
   );
 }
 
-function Progress({ d }: { d: StateSnapshot }) {
-  const p = d.progress;
-  const grad = p?.buckets.find((b) => /grad/i.test(b.label));
-  const share = grad && grad.count !== null && p?.total ? grad.count / p.total : null;
-  // the API sometimes leaves one bucket uncounted: when every other bucket and the total are known, it is the remainder
-  const missing = p ? p.buckets.filter((b) => b.count === null) : [];
-  const known = p ? p.buckets.reduce((a, b) => a + (b.count ?? 0), 0) : 0;
-  const rest = p && p.total !== null && missing.length === 1 && p.total - known >= 0 ? p.total - known : null;
-  const rows = p ? p.buckets.map((b) => (b.count === null && rest !== null ? { ...b, label: `${b.label} ≈`, count: rest, derived: true } : { ...b, derived: false })) : [];
-  return (
-    <Panel title="How far tokens get" term="to-grad" meta="curve progress, all time" src={d.progressSrc}>
-      {p ? (
-        <>
-          <Big value={fmtShare(share)} tone="exit">
-            of {p.total === null ? "—" : fmtInt(p.total)} launches vibe lists have graduated
-          </Big>
-          <HBars rows={rows.map((b) => ({ label: b.label, n: b.count, tone: /grad/i.test(b.label) ? "exit" : "mute" }))} total={p.total} />
-          <p className={s.note}>
-            {rows.some((b) => b.derived) ? `${rows.find((b) => b.derived)!.label.replace(" ≈", "")} ≈ the total minus the other buckets: vibe's API didn't count it directly. ` : ""}
-            Launches from factories vibe doesn&apos;t list are not in these counts.
-          </p>
-        </>
-      ) : (
-        <Unknown why="The vibe API did not answer. Counts come back on the next build." />
-      )}
-    </Panel>
-  );
-}
-
 function Snipers({ d }: { d: StateSnapshot }) {
   const x = d.snipers;
   return (
@@ -316,7 +267,7 @@ function Snipers({ d }: { d: StateSnapshot }) {
             </div>
           </dl>
           <p className={s.note}>
-            Up to 24 curve launches per day, spread through the day. Formed = 5+ buyers in the first hour. Labels from the <Link href="/methodology#index">Early Index</Link> ({fmtInt(x.indexSnipers)} bots, {fmtInt(x.indexFarms)} farm groups, built {utcDay(x.indexBuiltAt).md}).
+            Up to 24 curve launches per day, spread through the day. Formed = 5+ buyers in the first hour. Labels from the <Link href="/methodology#early-index">Early Index</Link> ({fmtInt(x.indexSnipers)} bots, {fmtInt(x.indexFarms)} farm groups, built {utcDay(x.indexBuiltAt).md}).
           </p>
         </>
       ) : x ? (
@@ -363,7 +314,7 @@ function Devs({ d }: { d: StateSnapshot }) {
           {rows.map((r, i) => (
             <div key={r.creator} className={`${s.tr} ${s.trDev}`}>
               <span className={s.place}>{i + 1}</span>
-              <Link className={s.addr} href={`/dev/${r.creator}`} prefetch={false}>{shortAddr(r.creator)}</Link>
+              <Link className={s.addr} href={`/w/${r.creator}#launches`} prefetch={false}>{shortAddr(r.creator)}</Link>
               <span className={`${s.r} ${s.strong}`}>{fmtInt(tab === "all" ? r.grads : r.grads7d)}</span>
               <span className={`${s.r} ${s.hideS}`}>{fmtInt(tab === "all" ? r.grads7d : r.grads)}</span>
               <span className={`${s.r} ${s.hideS}`} title={r.unlisted ? `${fmtInt(r.unlisted)} on factories vibe's lists leave out` : undefined}>
@@ -417,7 +368,7 @@ function Volumes({ d }: { d: StateSnapshot }) {
                     <small>{r.name}</small>
                   </span>
                 </span>
-                <span className={`${s.r} ${s.strong}`}>{fmtEth(r.volume24hEth)}</span>
+                <span className={`${s.r} ${s.strong}`}>{r.volume24hEth >= 1000 && r.volume24hEth < 1_000_000 ? Math.round(r.volume24hEth).toLocaleString("en-US") : fmtEth(r.volume24hEth)}</span>
                 <span className={`${s.r} ${s.hideS}`}>{fmtShare(v.total ? r.volume24hEth / v.total : null)}</span>
                 <span className={`${s.r} ${s.status}`}>
                   {r.taxed && <span className={`${s.word} ${s.pillGap}`}>Taxed</span>}
@@ -437,126 +388,28 @@ function Volumes({ d }: { d: StateSnapshot }) {
   );
 }
 
-function AfterGrad({ d, now }: { d: StateSnapshot; now: number }) {
-  const x = d.door;
-  // rows with a reading first; "no trade / not yet" rows fold into one line under the table
-  const hasData = (r: DoorRow) => r.ret24h !== null || (r.traded1h === true && r.ret1h !== null);
-  const full = x ? x.rows.filter(hasData) : [];
-  const empty = x ? x.rows.filter((r) => !hasData(r)) : [];
-  const emptySpan = empty.length ? Math.max(...empty.map((r) => now - r.gradTs)) : 0;
-  return (
-    <Panel id="after" title="After graduation" term="graduation" meta="vs the pool's open · 1 per dev and batch" src={d.doorSrc} wide>
-      {x ? (
-        <>
-          <div className={s.kpis4}>
-            <Kpi
-              label="Median, 1h after"
-              value={x.traded1h !== undefined && x.traded1h < 5 ? "—" : fmtRet(x.median1h)}
-              sub={x.traded1h === undefined ? `n = ${fmtInt(x.n1h)}` : `n = ${fmtInt(x.traded1h)} traded of ${fmtInt(x.n1h)}`}
-            />
-            <Kpi label="Median, 24h after" value={fmtRet(x.median24h)} sub={`n = ${fmtInt(x.n24h)} sampled`} />
-            <Kpi label="Above open at 24h" value={fmtShare(x.up24h)} tone="exit" sub={`n = ${fmtInt(x.n24h)}`} />
-            <Kpi label="No trade in 24h" value={fmtShare(x.dead24h)} sub={`n = ${fmtInt(x.n24h)}`} />
-          </div>
-          {full.length > 0 && (
-            <div className={s.table}>
-              <div className={`${s.tr} ${s.th} ${s.trDoor}`}>
-                <span>Token</span>
-                <span className={s.r}>Graduated</span>
-                <span className={s.r}>+1h</span>
-                <span className={s.r}>+24h</span>
-                <span className={`${s.r} ${s.hideS}`}>Trades 24h</span>
-              </div>
-              <ShowMore count={full.length} initial={8} label="graduations">
-                {(n) =>
-                  full.slice(0, n).map((r: DoorRow) => (
-                    <Link key={r.token} href={`/line/${r.token}`} prefetch={false} className={`${s.tr} ${s.trDoor} ${s.rowLink}`}>
-                      <span className={s.tokRow}>
-                        <TokenAvatar src={r.image ?? null} symbol={r.symbol ?? ""} size={24} />
-                        <span className={s.tok}><b>{r.symbol ? `$${r.symbol}` : shortAddr(r.token)}</b></span>
-                      </span>
-                      <span className={`${s.r} ${s.dim}`}>{ago(r.gradTs, now)} ago</span>
-                      <span className={`${s.r} ${r.traded1h === false ? s.dim : retClass(r.ret1h)}`}>{r.traded1h === false ? "no trade" : fmtRet(r.ret1h)}</span>
-                      <span className={`${s.r} ${retClass(r.ret24h)}`}>{r.ret24h === null ? <span className={s.dim}>{now - r.gradTs < 86_400 ? "not yet" : "—"}</span> : fmtRet(r.ret24h)}</span>
-                      <span className={`${s.r} ${s.hideS}`}>{r.trades24h === null ? "—" : fmtInt(r.trades24h)}</span>
-                    </Link>
-                  ))
-                }
-              </ShowMore>
-            </div>
-          )}
-          {empty.length > 0 && (
-            <p className={s.emptyRows}>
-              {full.length > 0 ? `${fmtInt(empty.length)} more` : fmtInt(empty.length)} graduated in the last {fmtDur(emptySpan)} with no trade yet.
-            </p>
-          )}
-          <p className={s.note}>
-            The 1h figure samples the newest graduations at least an hour old ({fmtInt(x.n1h)}); the 24h figures the newest at least a day old ({fmtInt(x.n24h)}{x.raw24h !== undefined && x.raw24h > x.n24h ? ` of ${fmtInt(x.raw24h)} in that span` : ""}).
-            Price vs the V4 pool&apos;s opening price; later prices are the last swap before +1h / +24h (no swap = still at the open). One token per dev and per 2-minute batch, so one farm can&apos;t fill the sample. The 1h median shows from 5 traded pools. Taxed v6 not included.
-          </p>
-        </>
-      ) : (
-        <Unknown why="Pool swaps did not load, or no graduation is an hour old yet." />
-      )}
-    </Panel>
-  );
-}
-
-function Method({ d }: { d: StateSnapshot }) {
-  const f = d.totals.factories;
-  return (
-    <Panel id="method" title="Method and sources" wide aside={<Link className={s.headLink} href="/methodology">Full methodology →</Link>}>
-      <div className={s.methodBody}>
-        <ul>
-          <li><b>Launches</b>: LaunchCreated logs of the four vibe/vibe factories. Days are UTC.</li>
-          <li><b>Graduations</b>: graduation logs from curves a vibe factory created (anyone can emit the same event).</li>
-          <li><b>Time to graduation</b>: launch block to graduation block, for this week&apos;s graduations.</li>
-          <li><b>Snipers</b>: the first 20 distinct buyers in the token&apos;s first hour (dev and protocol left out), matched against the Early Index. A sample, not a census.</li>
-          <li><b>After graduation</b>: swaps in the token&apos;s Uniswap V4 pool, price vs the pool&apos;s opening price.</li>
-          <li><b>Volumes</b> and <b>progress</b> come from the vibe API, which lists only some factories.</li>
-          <li>Rebuilt about every 15 minutes. Unknown shows as —, never 0. Signals, not verdicts. Testnet.</li>
-        </ul>
-        {f && (
-          <div className={s.table}>
-            <div className={`${s.tr} ${s.th} ${s.trFac}`}>
-              <span>Factory</span>
-              <span className={s.r}>Launches</span>
-              <span className={s.r}>7d</span>
-              <span className={s.r}>Grads</span>
-              <span className={s.r}>7d</span>
-            </div>
-            {f.map((x) => (
-              <div key={x.id} className={`${s.tr} ${s.trFac}`}>
-                <span className={s.tok}><b>{x.label}</b><small>{shortAddr(x.address)}</small></span>
-                <span className={s.r}>{fmtInt(x.launches)}</span>
-                <span className={s.r}>{fmtInt(x.launches7d)}</span>
-                <span className={s.r}>{fmtInt(x.grads)}</span>
-                <span className={s.r}>{fmtInt(x.grads7d)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <p className={s.dim}>Block #{fmtInt(d.headBlock)} · built in {(d.buildMs / 1000).toFixed(0)}s</p>
-      </div>
-    </Panel>
-  );
-}
-
 /* ------------------------------------------------------------------ board */
 
 type Wire = { status: string; stage?: string; snapshot?: StateSnapshot };
-
-const FALLBACK_LEAD = "Launchpad-wide stats for vibe/vibe, read from the chain: launches, graduations, snipers, top devs and volume.";
 
 export default function StateBoard({ initial }: { initial: StateSnapshot | null }) {
   const [snap, setSnap] = useState<StateSnapshot | null>(initial);
   const [status, setStatus] = useState<"ok" | "warming" | "down">(initial ? "ok" : "warming");
   const [stage, setStage] = useState("");
   const [now, setNow] = useState(() => Math.floor(Date.now() / 1000));
+  const { failed, round, start, fail, ok } = useTries(null);
 
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let have = !!initial; // a snapshot is on screen: a failed refresh keeps it (it goes stale) and keeps asking
+    start();
+    // no snapshot and no answer: ask again while tries are left (the page keeps reading), then stop
+    const miss = () => {
+      if (have || fail(null)) return true;
+      setStatus("down");
+      return false;
+    };
     const load = async () => {
       let next = 5 * 60_000;
       try {
@@ -566,14 +419,18 @@ export default function StateBoard({ initial }: { initial: StateSnapshot | null 
         if (j.snapshot) {
           setSnap((old) => (!old || j.snapshot!.builtAt >= old.builtAt ? j.snapshot! : old));
           setStatus("ok");
+          have = true;
+          ok();
           if (j.status === "stale") next = 30_000; // a new build is running: pick it up soon
         } else {
-          setStatus(r.status === 202 ? "warming" : "down");
+          // 202 = the first build is running (about two minutes): waiting, not a failed try
+          if (r.status !== 202 && !miss()) return;
+          setStatus("warming");
           setStage(j.stage ?? "");
           next = 10_000;
         }
       } catch {
-        if (alive) setStatus((x) => (x === "ok" ? x : "down"));
+        if (!alive || !miss()) return;
         next = 30_000;
       }
       setNow(Math.floor(Date.now() / 1000));
@@ -586,9 +443,8 @@ export default function StateBoard({ initial }: { initial: StateSnapshot | null 
       alive = false;
       clearTimeout(timer);
     };
-  }, [initial]);
+  }, [initial, round, start, fail, ok]);
 
-  const lead = useMemo(() => stateHeadline(snap), [snap]);
   const t = snap?.totals;
   const rate = t?.cohort && t.cohort.launched ? t.cohort.graduated / t.cohort.launched : null;
   const ageMin = snap ? Math.max(0, Math.round((now - snap.builtAt) / 60)) : 0;
@@ -596,7 +452,7 @@ export default function StateBoard({ initial }: { initial: StateSnapshot | null 
   return (
     <div className={s.board}>
       <div className={s.top}>
-        <PageHead title="State of vibe">{lead.length ? lead.join(" ") : FALLBACK_LEAD}</PageHead>
+        <PageHead title="Market">vibe/vibe this week, read from the chain.</PageHead>
         {snap ? (
           <p className={s.stamp}>
             <span>Snapshot {utcStamp(snap.builtAt)}</span>
@@ -605,29 +461,33 @@ export default function StateBoard({ initial }: { initial: StateSnapshot | null 
           </p>
         ) : (
           <p className={s.stamp}>
-            <span className={s.reading}>{status === "down" ? "No answer" : "Reading the chain"}</span>
+            {status === "down" && failed ? <span>No answer</span> : <Loader size="mini" caption="Reading the chain…" />}
           </p>
         )}
       </div>
 
       {!snap ? (
         <div className={s.warming} aria-live="polite">
-          <p>{status === "down" ? "Not answering. Retrying shortly." : "Reading every launch factory from the start. About two minutes; the page fills in by itself."}</p>
+          {status === "down" && failed
+            ? <Unreadable failed={failed} what="the chain" />
+            : <><Loader /><p>Reading every launch factory from the start. About two minutes; the page fills in by itself.</p></>}
           {stage && status !== "down" && <small>Step: {stage}</small>}
-          {/* named tiles: the layout explains itself while the first build runs */}
+          {/* named tiles: the layout explains itself while the first build runs (not after the read gave up) */}
+          {!(status === "down" && failed) && <>
           <div className={s.skel} aria-hidden>
             {["Launches 7d", "Graduations 7d", "Grad rate", "Median to grad"].map((k) => (
               <span key={k}>
                 <em>{k}</em>
-                <i />
+                <i className={shimmer} />
               </span>
             ))}
           </div>
           <ul className={s.skelList} aria-hidden>
-            {["Launches per day", "Graduations per day", "Time to graduation", "Snipers at the front", "Top devs", "After graduation", "Biggest 24h volume"].map((k) => (
+            {["Launches per day", "Graduations per day", "Time to graduation", "Snipers at the front", "Top devs", "Biggest 24h volume"].map((k) => (
               <li key={k}>{k}</li>
             ))}
           </ul>
+          </>}
         </div>
       ) : (
         <SnapAt.Provider value={snap.builtAt}>
@@ -639,15 +499,12 @@ export default function StateBoard({ initial }: { initial: StateSnapshot | null 
 
           <div className={s.kpiBlock}>
             <div className={s.kpis}>
-              <Kpi label="Launches 7d" value={t?.launches7d == null ? "—" : fmtInt(t.launches7d)} sub="all four factories" />
+              <Kpi label="Launches 7d" value={t?.launches7d == null ? "—" : fmtInt(t.launches7d)} sub="all factories" />
               <Kpi label="Graduations 7d" value={t?.grads7d == null ? "—" : fmtInt(t.grads7d)} sub="any launch date" tone="exit" />
               <Kpi label={<><Term id="graduation">Grad rate</Term> · this week&apos;s launches</>} value={fmtShare(rate)} sub={t?.cohort ? `${fmtInt(t.cohort.graduated)} of ${fmtInt(t.cohort.launched)}` : "—"} />
               <Kpi label={<Term id="eta">Median to grad</Term>} value={snap.ttg ? fmtDur(snap.ttg.medianS) : "—"} sub={snap.ttg ? `${fmtInt(snap.ttg.n)} graduations` : "—"} />
             </div>
             <div className={s.captionRow}>
-              <p className={s.caption}>
-                The week runs from {utcDay(snap.windowStart).md} 00:00 UTC to now. Graduations 7d counts every token that graduated this week, whenever it launched. Grad rate counts only this week&apos;s launches that already graduated (5 ETH reached, trading moved to Uniswap V4).
-              </p>
               {/* a plain file link: the PNG is rendered on the server and kept an hour (src/app/state/card/route.tsx) */}
               <a className={s.download} href="/state/card" download={`state-of-vibe-${new Date(snap.windowStart * 1000).toISOString().slice(0, 10)}.png`}>
                 Download weekly card ↓
@@ -655,23 +512,16 @@ export default function StateBoard({ initial }: { initial: StateSnapshot | null 
             </div>
           </div>
 
-          <SectionTabs items={SECTIONS} className={s.tabs} />
-
           <div className={s.pair} id="activity">
             <Launches d={snap} />
             <Graduations d={snap} />
           </div>
           <div className={s.pair} id="graduation">
             <TimeToGrad d={snap} />
-            <Progress d={snap} />
-          </div>
-          <div className={s.pair}>
             <Snipers d={snap} />
-            <Devs d={snap} />
           </div>
-          <AfterGrad d={snap} now={now} />
+          <Devs d={snap} />
           <Volumes d={snap} />
-          <Method d={snap} />
         </SnapAt.Provider>
       )}
     </div>

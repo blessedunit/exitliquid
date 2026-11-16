@@ -9,7 +9,7 @@ import { noteVibeStatus, vibeCoolingDown } from "@/lib/vibeCooldown";
 import type { CloneItem, Clones } from "./types";
 
 const API = `https://testnet.vibevibe.fun/api/v1/chains/${CHAIN_ID}`;
-const HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.fun", "user-agent": "Mozilla/5.0" };
+const HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.fun", "user-agent": "exitliquid.fun (read-only directory)" };
 const PAGES = 4; // 4 x 50 = the 200 newest fuzzy hits
 const TTL = 30 * 60_000;
 const FAIL_TTL = 90_000; // vibe didn't answer this search: unknown for 90 s, no repeat call on every rebuild

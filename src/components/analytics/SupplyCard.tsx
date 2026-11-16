@@ -24,7 +24,7 @@ export default function SupplyCard({ state, onSelect }: { state: AnalyticsState;
   const nonceUnknown = d ? Math.max(0, top - d.lowNonceChecked) : 0;
   const venue = state.a?.graduated ? "pool" : "curve";
   return (
-    <Card id="an-supply" title="Supply" term="dev-bag" sub={d ? `${fmtInt(d.holders)} holders` : "who holds it"} src={f && d ? f : null} stale={state.stale} loading={!d && state.trouble === "loading"}>
+    <Card id="an-supply" title="Supply" term="dev-bag" sub="who holds it" src={f && d ? f : null} stale={state.stale} loading={!d && state.trouble === "loading"}>
       {!d || !f ? (
         <Pending state={state} reason={f?.reason} reading="Reading holders…" />
       ) : (

@@ -8,11 +8,11 @@ import "server-only";
 import { encodeAbiParameters, keccak256, parseAbi, toHex, type Address, type Hex } from "viem";
 import { client } from "@/lib/chain";
 import { BoundedTtlMap } from "@/lib/bounded";
+import { POOL_MANAGER } from "@/lib/factories";
 import { FEE, buyOut, type Reserves } from "./cpmm";
 import { IMPACT_SIZES } from "./compute";
 import type { Market } from "./types";
 
-export const POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
 const V4_QUOTER: Address = "0x498928d32bf7649587C4C2D2944038500644c950";
 const ETH = "0x0000000000000000000000000000000000000000";
 const SWAP_TOPIC = "0x40e9cecb9f5f1f1c5b9c97dec2917b7ee92e57ba5563708daca94dd84ad7112f" as Hex; // Swap(bytes32,address,int128,int128,uint160,uint128,int24,uint24)
@@ -264,7 +264,13 @@ export async function poolSwapEth(poolId: string, fromBlock: number, toBlock: nu
     const cache = hit ?? { lastBlock: fromBlock - 1, byTx: new Map<string, number>(), at: 0 };
     const start = cache.lastBlock + 1;
     const WINDOW = 2_000_000;
-    for (let s = start; s <= toBlock; s += WINDOW) await pullSwaps(poolId, s, Math.min(toBlock, s + WINDOW - 1), cache.byTx);
+    // pulled into a map of its own and merged only when every window answered: pullSwaps ADDS sizes per tx, so a
+    // pull that threw half-way used to leave its swaps in the cached map (lastBlock not moved) and the next call
+    // read the same blocks again and added them a second time
+    const fresh = new Map<string, number>();
+    for (let s = start; s <= toBlock; s += WINDOW) await pullSwaps(poolId, s, Math.min(toBlock, s + WINDOW - 1), fresh);
+    // a tx sits in one block, and these blocks are all after cache.lastBlock: no key is in both maps
+    for (const [tx, eth] of fresh) cache.byTx.set(tx, eth);
     cache.lastBlock = toBlock;
     cache.at = Date.now();
     swaps.set(poolId, cache, 6 * 3_600_000);

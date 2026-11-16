@@ -20,13 +20,12 @@ export const SPRITES: Record<Skin, SpriteInfo> = {
   suit: { name: "The Suit", w: 36, h: 73, faces: "right", blurb: "grey hair, briefcase, has seen this before" },
   architect: { name: "The Dev", w: 38, h: 79, faces: "right", blurb: "sticker laptop, cold coffee, place #1" },
   ghost: { name: "Ghost", w: 47, h: 87, faces: "right", blurb: "sold everything, waves on the way out" },
-  doorghost: { name: "The Dev", w: 68, h: 131, faces: "right", blurb: "haunts the door, never leaves" },
+  // the old see-through "door ghost" art is retired (operator 16.10): the dev at the door is drawn as the Dev
+  doorghost: { name: "The Dev", w: 38, h: 79, faces: "right", blurb: "sticker laptop, cold coffee, place #1" },
 };
-
-/** Exited holders are drawn see-through, everywhere. */
-export const GHOST_ALPHA = 0.55;
 
 /** Public URL of a sprite at an integer nearest-neighbour scale (1, 2, 3, 4 or 8). */
 export function spriteSrc(skin: Skin, scale: 1 | 2 | 3 | 4 | 8 = 1): string {
+  if (skin === "doorghost") skin = "architect";
   return scale === 1 ? `/sprites/${skin}.png` : `/sprites/${skin}@${scale}x.png`;
 }

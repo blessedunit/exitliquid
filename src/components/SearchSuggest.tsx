@@ -1,18 +1,19 @@
 "use client";
 // Site search with a typeahead: up to 6 tokens under the box (↑ ↓ Enter Esc), "All results" last.
-// A full 0x address opens that token's line (v6 launches included), or the wallet profile / dev passport
+// A full 0x address opens that token's line (v6 launches included), or the wallet profile
 // when it is a wallet; a partial 0x… is matched against the lists everyone is browsing. Data: /api/search.
-// Free text + Enter filters the board on home (/?q=). Every row carries a type tag: TOKEN / WALLET / DEV.
+// Free text + Enter filters the board on home (/?q=). Every row carries a type tag: TOKEN / WALLET.
 // size="lg": the 52px paste field (56 on phones) with a visible "Check →" button (home hero, 404, sheet).
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import TokenAvatar from "./TokenAvatar";
+import { shortAddr } from "@/lib/format";
 import styles from "./SearchSuggest.module.css";
 
 type Sug = { token: string; symbol: string; name: string; image: string | null; progressBps: number; graduated: boolean; v6: boolean };
 type Res = { items: Sug[]; more: boolean; kind: "text" | "prefix" | "address"; wallet?: boolean | null };
 type Status = "idle" | "loading" | "ok" | "error" | "limited";
-type Opt = { id: string; kind: "line" | "vibe" | "all" | "addr" | "wallet" | "dev"; token?: string; sug?: Sug };
+type Opt = { id: string; kind: "line" | "vibe" | "all" | "addr" | "wallet"; token?: string; sug?: Sug };
 export type SearchSuggestProps = {
   className?: string;
   hotkey?: boolean;
@@ -26,7 +27,6 @@ const FULL = /^0x[0-9a-fA-F]{40}$/;
 const PART = /^0x[0-9a-fA-F]{4,39}$/;
 const DEBOUNCE_MS = 250;
 const VIBE_TOKEN = (t: string) => `https://testnet.vibevibe.fun/token/${t}`;
-const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 /** what is worth asking the server about (null = nothing yet) */
 function searchable(raw: string): string | null {
@@ -99,10 +99,7 @@ export default function SearchSuggest({ className, hotkey = false, size = "md", 
     if (data.kind === "address" && !data.items.length) {
       // no listed token at this address: a wallet opens its profile; a contract may be an unlisted line;
       // unknown (chain didn't answer) offers both
-      if (data.wallet !== false) {
-        opts.push({ id: `${uid}-o${opts.length}`, kind: "wallet", token: key });
-        opts.push({ id: `${uid}-o${opts.length}`, kind: "dev", token: key });
-      }
+      if (data.wallet !== false) opts.push({ id: `${uid}-o${opts.length}`, kind: "wallet", token: key });
       if (data.wallet !== true) opts.push({ id: `${uid}-o${opts.length}`, kind: "addr", token: key });
     }
     if (data.kind === "text" && data.items.length) opts.push({ id: `${uid}-o${opts.length}`, kind: "all" });
@@ -133,7 +130,6 @@ export default function SearchSuggest({ className, hotkey = false, size = "md", 
     setQ("");
     if ((o.kind === "line" || o.kind === "addr") && o.token) router.push(`/line/${o.token}`);
     else if (o.kind === "wallet" && o.token) router.push(`/w/${o.token}`);
-    else if (o.kind === "dev" && o.token) router.push(`/dev/${o.token}`);
     else if (o.kind === "all") router.push(`/?q=${encodeURIComponent(q.trim())}#board`);
   };
 
@@ -203,18 +199,13 @@ export default function SearchSuggest({ className, hotkey = false, size = "md", 
           </>
         ) : o.kind === "addr" ? (
           <span className={styles.sugNames}>
-            <b className={styles.sugMono}>Open line {short(o.token ?? "")}</b>
+            <b className={styles.sugMono}>Open line {shortAddr(o.token)}</b>
             <small>Not in the directory: checks the chain</small>
-          </span>
-        ) : o.kind === "dev" ? (
-          <span className={styles.sugNames}>
-            <b className={styles.sugMono}>Dev passport {short(o.token ?? "")}</b>
-            <small>Every launch by this wallet and what it did with its bag</small>
           </span>
         ) : o.kind === "wallet" ? (
           <span className={styles.sugNames}>
-            <b className={styles.sugMono}>Wallet {short(o.token ?? "")}</b>
-            <small>{data?.wallet === true ? "Positions, PnL, entries, funder" : "If it is a wallet: open its profile"}</small>
+            <b className={styles.sugMono}>Wallet {shortAddr(o.token)}</b>
+            <small>{data?.wallet === true ? "Positions, PnL, entries, funder, launches" : "If it is a wallet: open its profile"}</small>
           </span>
         ) : (
           <span className={styles.sugNames}>
@@ -224,7 +215,6 @@ export default function SearchSuggest({ className, hotkey = false, size = "md", 
         {o.kind === "all" && <span className={styles.sugEnd} aria-hidden>↵</span>}
         {o.kind === "addr" && <span className={styles.tag}>Token</span>}
         {o.kind === "wallet" && <span className={styles.tag}>Wallet</span>}
-        {o.kind === "dev" && <span className={styles.tag}>Dev</span>}
       </li>
     );
   };

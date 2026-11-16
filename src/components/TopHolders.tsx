@@ -14,6 +14,9 @@ import type { HolderFlag } from "@/lib/analytics/types";
 import { FLAG } from "./analytics/walletTags";
 import an from "./analytics/analytics.module.css";
 import { CardHead } from "./ui/CardHead";
+import Unreadable from "./token/Unreadable";
+import { shimmer } from "./ui/Loader";
+import { useTries } from "./useTries";
 import styles from "./TopHolders.module.css";
 
 type Funding = { kind: "source"; from: string; block: number } | { kind: "faucet" } | { kind: "bridge" } | { kind: "none" };
@@ -47,7 +50,7 @@ type Props = {
 
 export default function TopHolders({ token, data, creator, selected = null, onSelect, flags = null }: Props) {
   const [res, setRes] = useState<Holders | null>(null);
-  const [trouble, setTrouble] = useState<"retry" | null>(null);
+  const { failed, round, start, fail, ok } = useTries(token);
   const [all, setAll] = useState(false);
   const box = useRef<HTMLElement>(null);
   const [near, setNear] = useState(false);
@@ -74,6 +77,8 @@ export default function TopHolders({ token, data, creator, selected = null, onSe
     let timer: ReturnType<typeof setTimeout> | undefined;
     let fills = 0;
     let first = true;
+    let have = false; // holders are on screen: a failed refresh keeps them and keeps asking
+    start();
     const load = () => {
       // hidden browser tab: no request, look again in a few seconds (the first read always goes)
       if (!first && document.visibilityState !== "visible") {
@@ -85,22 +90,21 @@ export default function TopHolders({ token, data, creator, selected = null, onSe
         .then(async (r) => {
           if (!alive) return;
           if (!r.ok) {
-            // 429 (rate limit) and 503 (explorer busy) alike: unknown for now, ask again later
-            setTrouble("retry");
-            timer = setTimeout(load, 30_000);
+            // 429 (rate limit) and 503 (explorer busy) alike: unknown for now, ask again while tries are left
+            if (have || fail(token)) timer = setTimeout(load, 30_000);
             return;
           }
           const j = (await r.json()) as Holders;
           if (!alive) return;
           setRes(j);
-          setTrouble(null);
+          have = true;
+          ok();
           const again = j.pending > 0 && fills++ < 12;
           timer = setTimeout(load, again ? 6_000 : 300_000);
         })
         .catch(() => {
           if (!alive) return;
-          setTrouble("retry");
-          timer = setTimeout(load, 30_000);
+          if (have || fail(token)) timer = setTimeout(load, 30_000);
         });
     };
     load();
@@ -108,7 +112,7 @@ export default function TopHolders({ token, data, creator, selected = null, onSe
       alive = false;
       clearTimeout(timer);
     };
-  }, [near, token]);
+  }, [near, token, round, start, fail, ok]);
 
   const holders = res && res.token === token ? res : null;
   const dev = creator?.toLowerCase() ?? null;
@@ -145,18 +149,17 @@ export default function TopHolders({ token, data, creator, selected = null, onSe
   const clusterCount = holders?.clusters.length ?? 0;
   const bundled = bundles.out.size;
   const maxBps = holders?.rows[0]?.shareBps || 1;
-  const meta = trouble && !holders ? "Retrying…" : holders ? `top ${holders.rows.length} · % of total supply · explorer${holders.pending > 0 ? ` · ${holders.pending} checking` : ""}` : "top 30 · explorer";
+  const meta = holders ? `top ${holders.rows.length} · % of total supply · explorer${holders.pending > 0 ? ` · ${holders.pending} checking` : ""}` : "top 30 · explorer";
 
   return (
-    <section ref={box} id="an-top" className={`${an.card} ${styles.panel}`} aria-labelledby="holders-title" data-loading={!holders && !trouble ? true : undefined}>
+    <section ref={box} id="an-top" className={`${an.card} ${styles.panel}`} aria-labelledby="holders-title" data-loading={!holders && !failed ? true : undefined}>
       <CardHead id="holders-title" title="Top holders" term="one-funder" meta={meta} className={an.head} />
       {!holders ? (
-        trouble ? (
-          <p className={an.msg} role="status">Retrying… Holders unknown for now, not zero.</p>
+        failed ? (
+          <Unreadable failed={failed} className={an.msg} />
         ) : (
-          <div className={an.skel} role="status" aria-label="Reading holders">
-            <i className={an.skBig} /><i className={an.skLine} /><i className={an.skLine} /><i className={an.skLine} /><i className={an.skLine} />
-          </div>
+          // quiet rows while the list loads: the verdict already says "Reading the chain…" once
+          <div className={styles.skel} aria-hidden>{[0, 1, 2, 3, 4].map((i) => <i key={i}><span className={shimmer} /></i>)}</div>
         )
       ) : holders.rows.length === 0 ? (
         <p className={an.msg}>No holders outside the curve and pool yet.</p>
@@ -209,7 +212,7 @@ export default function TopHolders({ token, data, creator, selected = null, onSe
                       )}
                       <ProfileLink addr={r.address} />
                     </span>
-                    {dev && r.address === dev && <Link className={styles.devLink} href={`/dev/${dev}`} prefetch={false} title="Open the dev passport">Dev →</Link>}
+                    {dev && r.address === dev && <Link className={styles.devLink} href={`/w/${dev}#launches`} prefetch={false} title="Open the dev's wallet profile">Dev →</Link>}
                     {c && (
                       <span
                         className={`${an.tag} ${an.t_bad}`}

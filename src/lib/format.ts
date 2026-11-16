@@ -43,9 +43,6 @@ export function fmtAge(seconds: number): string {
   return `${Math.floor(s / 86_400)}d`;
 }
 
-/** Basis points as a percent with one decimal: 6437 -> "64.4%". */
-export const fmtPct = (bps: number) => `${(bps / 100).toFixed(1)}%`;
-
 /** Percent with honest small values: 0 -> "0%", 0.004 -> "<0.1%", 7.37 -> "7.4%", 53.5 -> "54%".
  *  Never prints a signed zero: anything that rounds to 0 loses its sign ("0%" / "<0.1%"). */
 export function pct(v: number | null | undefined, signed = false): string {

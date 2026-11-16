@@ -1,6 +1,6 @@
 import type { NextConfig } from "next";
 
-// Security headers.
+// Security headers (research/audit-security.md).
 // CSP without nonces on purpose: most pages are static/prerendered, and nonces would force
 // every page to render per request (docs: guides/content-security-policy). Next's inline
 // bootstrap scripts therefore need 'unsafe-inline'; XSS is kept out by React escaping,
@@ -17,7 +17,9 @@ const vercelLive = isVercelPreview ? " https://vercel.live" : "";
 const onVercel = !!process.env.VERCEL;
 
 // Privy sign-in (email / X / Google / WalletConnect): only when an app id is set (docs.privy.io, "CSP").
-const privy = !!(process.env.NEXT_PUBLIC_PRIVY_APP_ID || "").trim();
+// the app id is public (it ships in the page). Fallback: the self-hosted env file came with it empty (06.10) and
+// the site silently fell back to a raw browser-wallet connect, which vibe/vibe spotlight rules forbid.
+const privy = !!(process.env.NEXT_PUBLIC_PRIVY_APP_ID || "cmumniqih008d0cl2r26ndzaz").trim();
 const P = {
   script: privy ? " https://challenges.cloudflare.com" : "",
   img: privy ? " https://explorer-api.walletconnect.com https://*.walletconnect.com https://*.walletconnect.org" : "",
@@ -27,14 +29,17 @@ const P = {
   frame: privy ? " https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com" : "",
 };
 
+// Cloudflare Web Analytics: Cloudflare injects its beacon into every page it serves (self-hosted since 06.10)
+const cfInsights = { script: " https://static.cloudflareinsights.com", connect: " https://cloudflareinsights.com" };
+
 const csp = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${vercelLive}${P.script}`,
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}${vercelLive}${P.script}${cfInsights.script}`,
   `style-src 'self' 'unsafe-inline'${vercelLive}`,
   `img-src 'self' data: blob:${vercelLive ? " https://vercel.live https://vercel.com" : ""}${P.img}`,
   `font-src 'self' data:${vercelLive ? " https://vercel.live https://assets.vercel.com" : ""}`,
   "media-src 'self'",
-  `connect-src 'self'${isDev ? " ws: wss:" : ""}${vercelLive ? " https://vercel.live wss://ws-us3.pusher.com" : ""}${P.connect}`,
+  `connect-src 'self'${isDev ? " ws: wss:" : ""}${vercelLive ? " https://vercel.live wss://ws-us3.pusher.com" : ""}${P.connect}${cfInsights.connect}`,
   `frame-src ${vercelLive || P.frame ? `${vercelLive}${P.frame}`.trim() : "'none'"}`
   ,`child-src ${P.frame ? P.frame.trim() : "'none'"}`,
   "worker-src 'self' blob:",
@@ -75,6 +80,8 @@ for (const key of ["NEXT_PUBLIC_EXIT_TOKEN", "NEXT_PUBLIC_EXIT_CREATOR"] as cons
 
 const nextConfig: NextConfig = {
   poweredByHeader: false, // no "X-Powered-By: Next.js"
+  // no next/image in the app; self-hosted, /_next/image was an open fetcher (SSRF advisory, audit 15.10)
+  images: { unoptimized: true },
   productionBrowserSourceMaps: false, // explicit: never ship source maps to browsers
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

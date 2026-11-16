@@ -21,7 +21,7 @@ import "server-only";
 import { parseAbi, type Address, type Hex } from "viem";
 import { client, cleanText } from "./chain";
 import { CHAIN_ID } from "./config";
-import { PLUMBING } from "./service";
+import { FACTORIES as FACTORY_LIST, GRAD_HOOKS as HOOK_LIST, PLUMBING, POOL_MANAGER } from "./factories";
 import { redis, storeKind } from "./store";
 import { earlyIndex, perIndex } from "@/lib/earlyIndex";
 import { beat } from "./beacon";
@@ -162,28 +162,21 @@ const LC_V6 = "0xa7e8032bfd07a9fbcde50eabe91eb2901faee6dbddd9cced579491d9b07ef5c
 const POOL_INIT = "0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438" as Hex;
 const G_V1 = "0xc1eaf6441a62895ddec3612cee606bd971cf6b1b38dd700f103e7b6b94167d0c" as Hex; // curve: graduated (poolId; eth, tokens)
 const G_V6 = "0xab164bba6f9a29b6722f18be5ea821368fedba444c4f8733118f3557d77ab2ae" as Hex; // v6 curve: graduated
-const GRAD_HOOKS = new Set([
-  "0x30534b7601878e2043335c4bf99b4c50a75b90cc", // first factory era (Aug-Sep 2026)
-  "0xc5b22f31f247a6ee33592792d44bde31c0ef10cc", // legacy fee hook
-  "0x2779651fee12f6fb5a187578de6b63709f85d0cc", // fee hook (main factory)
-  "0xa5e27e3e54739162fe52c2c48e55b6dd6572e8ec", // taxed v6
-]);
+const GRAD_HOOKS = new Set(HOOK_LIST);
 const INIT_WINDOW = 4_000_000; // ~9.5k pool inits per 9.5M blocks at the densest: stay well under the 10k-log answer cap
 const TRANSFER = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" as Hex;
 const ZERO = "0x0000000000000000000000000000000000000000";
 
 type Factory = { id: string; label: string; kind: "curve" | "taxed"; address: string; from: number };
-// `from` = a little before the factory's first LaunchCreated (measured 01.10)
-const FACTORIES: Factory[] = [
-  { id: "first", label: "Curve · first factory", kind: "curve", address: "0x4febc267e0c24440bcdef72b5dbc5fe7bed091df", from: 95_900_000 },
-  { id: "legacy", label: "Curve · legacy factory", kind: "curve", address: "0xb5b7a2f6c4eafa2d73918fca32d50e2126339eb9", from: 108_900_000 },
-  { id: "main", label: "Curve · main factory", kind: "curve", address: "0x40f1be6faf8dab9c143cce1a0a04c2075fb2df59", from: 115_400_000 },
-  { id: "v6", label: "Taxed v6 factory", kind: "taxed", address: "0xe794217880011f9ca6961340ed5c16ec9559fea0", from: 126_000_000 },
-];
+// src/data/factories.json, oldest first (the saved snapshot indexes factories by this order);
+// `from` = a little before the factory's first LaunchCreated
+const FACTORIES: Factory[] = [...FACTORY_LIST]
+  .sort((a, b) => a.from - b.from)
+  .map((f) => ({ id: f.id, label: f.label, kind: f.version === "v6" ? "taxed" : "curve", address: f.address, from: f.from }));
 const GRAD_FROM = 95_900_000;
 
 const API = (process.env.STATE_VIBE_API || `https://testnet.vibevibe.fun/api/v1/chains/${CHAIN_ID}`).replace(/\/$/, "");
-const API_HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.fun", "user-agent": "Mozilla/5.0" };
+const API_HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.fun", "user-agent": "exitliquid.fun (read-only directory)" };
 
 const FRESH_MS = 15 * 60_000; // a snapshot younger than this is served as is
 const REDIS_KEY = "exit:state:v1";
@@ -748,7 +741,6 @@ async function volumeLeaders(recentGradTokens: string[]): Promise<{ rows: VolRow
 
 /* ------------------------------------------------------------------ after the door (V4 pool swaps) */
 
-const POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
 // PoolManager Swap(id indexed, sender indexed, amount0, amount1, sqrtPriceX96, liquidity, tick, fee)
 const SWAP = "0x40e9cecb9f5f1f1c5b9c97dec2917b7ee92e57ba5563708daca94dd84ad7112f" as Hex;
 const Q192 = 2 ** 192;

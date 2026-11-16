@@ -7,7 +7,10 @@ let running: Promise<number | null> | null = null;
 export async function ethUsdPrice(): Promise<number | null> {
   if (memo && Date.now() - memo.at < 60_000) return memo.value;
   if (running) return running;
-  running = (async () => {
+  // hard cap on top of the fetch abort: on 17.10 one fetch never settled (abort didn't fire) and every caller
+  // awaiting it (the $EXIT line, the screener) hung for 9 hours. Never wait more than 3 s for a display-only price.
+  const fallback = new Promise<number | null>((res) => setTimeout(() => res(memo?.value ?? null), 3_000));
+  const job = (async () => {
     try {
       const signal = AbortSignal.timeout(2_500);
       const response = await fetch("https://api.coinbase.com/v2/prices/ETH-USD/spot", { cache: "no-store", signal });
@@ -19,9 +22,10 @@ export async function ethUsdPrice(): Promise<number | null> {
       return value;
     } catch {
       return memo?.value ?? null;
-    } finally {
-      running = null;
     }
   })();
+  running = Promise.race([job, fallback]).finally(() => {
+    running = null;
+  });
   return running;
 }

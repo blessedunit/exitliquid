@@ -1,5 +1,5 @@
 // The Early Index (sniper / farm / verified-early wallet labels), read at RUNTIME from disk.
-// the hourly index job rewrites the JSON every hour (atomic temp + rename); before, the file was imported and baked
+// ops/early_index.py rewrites the JSON every hour (atomic temp + rename); before, the file was imported and baked
 // into the build, so a fresh index needed a rebuild. Now:
 // - path: env EARLY_INDEX_PATH, else <cwd>/src/data/early-index.json (next start runs in the project dir);
 // - the file's mtime is checked at most once a minute, the JSON re-read only when it changed;
@@ -40,7 +40,7 @@ function refresh() {
     if (!valid(j)) throw new Error("bad early index");
     mtimeMs = st.mtimeMs;
     // the file on disk is the source of truth, even when it is older than the one in memory:
-    // that is how a bad build gets rolled back (the hourly index job has its own sanity check before writing)
+    // that is how a bad build gets rolled back (ops/early_index.py has its own sanity check before writing)
     current = normalize(j);
     source = "disk";
   } catch {

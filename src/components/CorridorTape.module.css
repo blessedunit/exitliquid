@@ -41,10 +41,16 @@ button.row:focus-visible { outline: 2px solid var(--exit); outline-offset: -2px;
 .fresh { background: var(--exit-a10); }
 .active, button.row.active:hover { background: var(--s2); box-shadow: inset 2px 0 0 var(--exit); }
 
+/* half a page wide (beside Top holders): tighter columns, the profile icon follows the address */
+.tape { container-type: inline-size; }
+@container (max-width: 620px) {
+  .row { grid-template-columns: 36px 40px minmax(0, 1fr) 88px 80px 48px; column-gap: 10px; }
+  .prof { left: calc(36px + 10px + 40px + 10px + 92px); }
+}
 .empty { margin: 0; padding: 24px 0; color: var(--t3); font: 400 13px/20px var(--f-ui); }
 .skeleton { display: grid; }
-.skeleton i { display: block; height: 44px; border-bottom: 1px solid var(--line); background: linear-gradient(90deg, var(--s2) 0 40%, transparent 40%); background-size: 100% 12px; background-repeat: no-repeat; background-position: 0 center; animation: pulse 1.2s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: .45; } }
+.skeleton i { display: flex; align-items: center; height: 44px; border-bottom: 1px solid var(--line); }
+.skeleton i > span { width: 40%; height: 12px; }
 
 /* "Show all N trades" / "Load older": ghost buttons under the table, left-aligned */
 .historyEnd, .loadOlder { display: inline-flex; align-items: center; width: auto; min-height: 40px; margin: 8px 0 0 -12px; padding: 0 12px; border: 0; background: transparent; color: var(--t3); font: 500 14px/20px var(--f-ui); letter-spacing: 0; text-transform: none; text-align: left; }
@@ -66,4 +72,4 @@ button.row:focus-visible { outline: 2px solid var(--exit); outline-offset: -2px;
   .loadOlder { min-height: 44px; }
   .dustBtn { display: inline-flex; align-items: center; min-height: 40px; }
 }
-@media (prefers-reduced-motion: reduce) { .skeleton i { animation: none; } }
+

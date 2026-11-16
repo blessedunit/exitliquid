@@ -3,18 +3,16 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { connectWallet, disconnectWallet, getPrivyAddress, PRIVY_ENABLED } from "@/lib/wallet";
-import { IS_LIVE } from "@/lib/config";
+import { shortAddr } from "@/lib/format";
 import styles from "./Header.module.css";
 
 const valid = (v: unknown): v is string => typeof v === "string" && /^0x[0-9a-fA-F]{40}$/.test(v);
-const short = (v: string) => `${v.slice(0, 6)}…${v.slice(-4)}`;
 const DISCONNECTED_KEY = "exit.wallet.disconnected";
 
 export default function WalletHeader() {
   const [wallet, setWallet] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const [points, setPoints] = useState<{ wallet: string; value: number | null } | null>(null);
   const disconnected = useRef(false);
   const menu = useRef<HTMLDetailsElement>(null);
 
@@ -40,7 +38,7 @@ export default function WalletHeader() {
     }
     const sync = () => {
       try { disconnected.current = localStorage.getItem(DISCONNECTED_KEY) === "1"; } catch { /* storage can be blocked */ }
-      if (disconnected.current) { setWallet(null); setPoints(null); return; }
+      if (disconnected.current) { setWallet(null); return; }
       void provider?.request({ method: "eth_accounts" }).then((accounts: unknown) => changed(Array.isArray(accounts) ? accounts : []), () => {});
     };
     window.addEventListener("exit-wallet-change", sync);
@@ -53,7 +51,6 @@ export default function WalletHeader() {
         window.dispatchEvent(new Event("exit-me-change"));
       } else {
         setWallet(null);
-        setPoints(null);
       }
     };
     window.addEventListener("exit-privy-wallet", privy);
@@ -73,32 +70,6 @@ export default function WalletHeader() {
     document.addEventListener("pointerdown", close);
     return () => document.removeEventListener("pointerdown", close);
   }, []);
-
-  useEffect(() => {
-    if (!wallet) return;
-    let active = true;
-    let running = false;
-    const load = async () => {
-      if (!active || running || document.visibilityState !== "visible") return;
-      running = true;
-      try {
-        const response = await fetch(`/api/points/${wallet}`, { cache: "no-store" });
-        if (!response.ok) throw new Error("Points unavailable");
-        const data = await response.json() as { points: number | null };
-        if (active) setPoints({ wallet, value: data.points });
-      } catch {
-        if (active) setPoints({ wallet, value: null });
-      } finally { running = false; }
-    };
-    void load();
-    const timer = window.setInterval(() => { void load(); }, 15_000);
-    window.addEventListener("focus", load);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-      window.removeEventListener("focus", load);
-    };
-  }, [wallet]);
 
   const connect = async () => {
     if (busy) return;
@@ -123,7 +94,6 @@ export default function WalletHeader() {
     disconnected.current = true;
     setBusy(true); // Connect stays disabled until the old session is fully closed
     setWallet(null);
-    setPoints(null);
     try {
       localStorage.setItem(DISCONNECTED_KEY, "1");
       if (localStorage.getItem("exit.me")?.toLowerCase() === wallet) localStorage.removeItem("exit.me");
@@ -138,26 +108,13 @@ export default function WalletHeader() {
     setBusy(false);
   };
 
-  const pts = wallet && points?.wallet === wallet && points.value !== null
-    ? points.value.toLocaleString("en-US", { maximumFractionDigits: 2 })
-    : "…";
-
   return (
     <div className={styles.walletActions}>
-      {/* points chip: neutral frame, opens your lines (hidden on phones: My lines is in the menu) */}
-      {wallet && (
-        <Link className={styles.pts} href={`/lines?w=${wallet}`} title={IS_LIVE ? "Your points · your lines" : "Preview points on a stand-in token, not $EXIT"}>
-          <b>{pts}</b>
-          {/* before launch the line replays a preview token: say so, these are not $EXIT points */}
-          <small>{IS_LIVE ? "pts" : "preview"}</small>
-        </Link>
-      )}
       {wallet ? <details className={styles.walletMenu} ref={menu} onKeyDown={(event) => { if (event.key === "Escape" && menu.current) menu.current.open = false; }}>
-        <summary className={styles.walletAddress} title={wallet}>{short(wallet)} <span aria-hidden="true">▾</span></summary>
+        <summary className={styles.walletAddress} title={wallet}>{shortAddr(wallet)} <span aria-hidden="true">▾</span></summary>
         <div className={styles.walletDropdown}>
           <span className={styles.walletMenuTitle}>Connected wallet</span>
-          <span className={styles.walletMenuAddress} title={wallet}>{short(wallet)}</span>
-          <span className={styles.walletMenuPts}>{pts} {IS_LIVE ? "points" : "preview points"}</span>
+          <span className={styles.walletMenuAddress} title={wallet}>{shortAddr(wallet)}</span>
           <Link className={styles.walletMenuLink} href={`/w/${wallet.toLowerCase()}`} prefetch={false} onClick={() => { if (menu.current) menu.current.open = false; }}>My profile →</Link>
           <button type="button" onClick={disconnect}>Disconnect</button>
           <small>Disconnects from this site only.</small>

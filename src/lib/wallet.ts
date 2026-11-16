@@ -15,7 +15,7 @@ export type WalletBridge = {
 let bridge: WalletBridge | null = null;
 
 /** Privy is configured: it is the only source of the connected wallet (the header never auto-reads the extension). */
-export const PRIVY_ENABLED = !!(process.env.NEXT_PUBLIC_PRIVY_APP_ID || "").trim();
+export const PRIVY_ENABLED = !!(process.env.NEXT_PUBLIC_PRIVY_APP_ID || "cmumniqih008d0cl2r26ndzaz").trim();
 
 // The wallet a Privy session holds (email / Google / X / linked wallet). Survives the OAuth redirect:
 // the Privy layer re-publishes it after the page comes back.
@@ -51,17 +51,3 @@ export async function disconnectWallet(): Promise<void> {
   if (bridge) await bridge.disconnect();
 }
 
-export async function signMessage(address: string, message: string): Promise<string> {
-  const hex =
-    "0x" +
-    Array.from(new TextEncoder().encode(message))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-  const p = (bridge && (await bridge.provider(address))) || eth();
-  return (await p.request({ method: "personal_sign", params: [hex, address] })) as string;
-}
-
-export function hasWallet() {
-  if (bridge) return true;
-  return typeof window !== "undefined" && !!(window as unknown as { ethereum?: unknown }).ethereum;
-}

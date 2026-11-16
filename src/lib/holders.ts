@@ -16,7 +16,7 @@ import { client } from "./chain";
 import { noteVibeStatus, vibeCoolingDown } from "./vibeCooldown";
 
 const API = `https://testnet.vibevibe.fun/api/v1/chains/${CHAIN_ID}`;
-const VIBE_HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.fun", "user-agent": "Mozilla/5.0" };
+const VIBE_HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.fun", "user-agent": "exitliquid.fun (read-only directory)" };
 const EXPLORER = "https://explorer.testnet.chain.robinhood.com";
 const EXPLORER_HEADERS = { accept: "application/json", "user-agent": "Mozilla/5.0" };
 

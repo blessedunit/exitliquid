@@ -1,0 +1,56 @@
+/* "Launches created" table on the wallet profile (LaunchTable). The block, key numbers and tags come from
+   profile.module.css. */
+
+.msg { margin: 0; padding: 0; color: var(--t2); font: 400 14px/22px var(--f-ui); }
+
+.tools { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: var(--sp3) 0; padding: 0; }
+.chip { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 12px; background: transparent; border: 0; color: var(--t3); font: 500 13px/1 var(--f-ui); cursor: pointer; }
+.chip:hover { color: var(--t1); }
+.chip:focus-visible, .sortBtn:focus-visible, .more:focus-visible, .sym:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+.chip[aria-pressed="true"] { background: var(--s2); color: var(--t1); }
+.chip i { font: 400 12px/1 var(--f-num); font-style: normal; color: var(--t3); }
+
+.table { width: 100%; border-collapse: collapse; font: 400 14px/20px var(--f-num); font-variant-numeric: tabular-nums; }
+.table th { height: 36px; padding: 0 var(--sp3); text-align: right; color: var(--t3); font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; border-bottom: 1px solid var(--line); }
+.table th:first-child, .table td:first-child { text-align: left; padding-left: 0; }
+.table th:last-child, .table td:last-child { padding-right: 0; }
+.table td { height: 44px; padding: 0 var(--sp3); text-align: right; color: var(--t1); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.table tbody tr:last-child td { border-bottom: 0; }
+.table tbody tr:hover td { background: var(--s2); }
+.sortBtn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 0; background: none; border: 0; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+.sortBtn:hover { color: var(--t1); }
+.sortOn { color: var(--t1); }
+.tok { display: flex; align-items: baseline; gap: 8px; min-width: 0; max-width: 280px; }
+.sym { overflow: hidden; text-overflow: ellipsis; color: var(--t1); font: 500 14px/20px var(--f-ui); text-decoration: none; }
+a.sym:hover { color: var(--exit); text-decoration: none; }
+.name { overflow: hidden; text-overflow: ellipsis; color: var(--t3); font: 400 12px/16px var(--f-ui); }
+.prog { display: inline-flex; align-items: center; gap: 10px; justify-content: flex-end; }
+.track { position: relative; display: inline-block; width: 48px; height: 2px; background: var(--s2); }
+.fill { position: absolute; inset: 0 auto 0 0; background: var(--t2); }
+.gradTxt { display: inline-flex; align-items: center; gap: 8px; color: var(--t2); font: 400 13px/20px var(--f-ui); }
+.gradTxt::before { content: ""; width: 6px; height: 6px; background: var(--exit); }
+.sold { color: var(--down); }
+.held { color: var(--t1); }
+.dim { color: var(--t3); }
+.cellLabel { display: none; }
+
+.more { display: inline-flex; align-items: center; min-height: 40px; margin: var(--sp2) 0 0 calc(-1 * var(--sp3)); padding: 0 var(--sp3); background: transparent; border: 0; color: var(--t2); font: 500 13px/1 var(--f-ui); cursor: pointer; }
+.more:hover { color: var(--t1); background: var(--s2); }
+
+@media (max-width: 760px) {
+  /* the table becomes compact 2-line rows: $TICKER · age · curve on top, the rest labelled below */
+  .table thead { display: none; }
+  .table, .table tbody { display: block; }
+  .table tr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px var(--sp4); padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .table tbody tr:last-child { border-bottom: 0; }
+  .table tr::after { content: ""; order: 1; flex-basis: 100%; height: 0; }
+  .table td { display: inline-flex; align-items: baseline; gap: 6px; order: 2; height: auto; padding: 0 !important; border: 0 !important; text-align: left; white-space: nowrap; font-size: 13px; }
+  .table td:first-child { order: 0; flex: 1 1 0; min-width: 0; }
+  .table td.mAge, .table td.mCurve { order: 0; }
+  .table td.mAge .cellLabel, .table td.mCurve .cellLabel { display: none; }
+  .table td.mQuiet { display: none; }
+  .cellLabel { display: inline; color: var(--t3); font: 400 12px/1 var(--f-ui); }
+  .table .name { display: none; }
+  .prog { justify-content: flex-start; }
+  .tok { max-width: none; }
+}

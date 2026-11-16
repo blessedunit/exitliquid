@@ -6,20 +6,28 @@ import { ACTIVE_TOKEN } from "@/lib/config";
 import { isAddress } from "@/lib/ticket";
 import { launchInfo, launchMarket, launchMissing, type LaunchCard } from "@/lib/launches";
 import { v6Launch, v6Line } from "@/lib/v6";
+import { v6LaunchCreation } from "@/lib/chain";
+import Unreadable from "@/components/token/Unreadable";
 import { tokenAbout } from "./about";
 
 export const dynamic = "force-dynamic";
 
-type Kind = { info: LaunchCard | null; v6Symbol: string | null; v6: boolean; missing: boolean };
+/** v6: vibe lists it as a v6 launch. v6Unread: vibe didn't answer but a v6 factory on chain launched it. */
+type Kind = { info: LaunchCard | null; v6Symbol: string | null; v6: boolean; v6Unread: boolean; missing: boolean };
 
 // v1 first (one cached call); a token the v1 directory doesn't know may be a taxed v6 launch (one more call)
 async function kindOf(token: string): Promise<Kind> {
   const info = await launchInfo(token);
-  if (info) return { info, v6: false, v6Symbol: null, missing: false };
+  if (info) return { info, v6: false, v6Unread: false, v6Symbol: null, missing: false };
   // v6Launch: null = 404 (not a v6 launch), throws = vibe didn't answer (unknown)
   const [l, v1Missing] = await Promise.all([v6Launch(token).then((x) => ({ x }), () => null), launchMissing(token)]);
   const v6 = l?.x ?? null;
-  return { info: null, v6: !!v6, v6Symbol: v6 ? String(v6.symbol ?? "").slice(0, 16) : null, missing: v1Missing && !!l && !v6 };
+  // vibe didn't answer: the chain decides (3 s), so a real v6 launch is never drawn as "not a vibe launch"
+  const onChain = l ? false : await Promise.race([
+    v6LaunchCreation(token).then((c) => !!c, () => false),
+    new Promise<boolean>((res) => setTimeout(() => res(false), 3_000)),
+  ]);
+  return { info: null, v6: !!v6, v6Unread: onChain, v6Symbol: v6 ? String(v6.symbol ?? "").slice(0, 16) : null, missing: v1Missing && !!l && !v6 };
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ token: string }> }): Promise<Metadata> {
@@ -52,7 +60,9 @@ export default async function LinePage({ params }: { params: Promise<{ token: st
     // taxed v6 launch: the v1 chain engine can't read it, so the line lite from vibe/vibe's indexer
     const line = await v6Line(token).catch(() => null);
     if (line) return <V6Line initial={line} />;
+    return <Unreadable />; // a v6 launch the v1 engine can't read: say so and keep trying
   }
+  if (k.v6Unread) return <Unreadable />;
   const info = k.info;
   const holders = typeof info?.holders === "number" && Number.isFinite(info.holders) ? info.holders : (market?.holders ?? null);
   // info can be null when the vibe API is slow: LiveHero then falls back to the queue's own name/symbol

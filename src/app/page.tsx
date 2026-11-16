@@ -3,9 +3,9 @@ import { X_HANDLE, X_LIVE } from "@/lib/config";
 import { ABOUT } from "@/lib/nav";
 import { DeparturesPage } from "./launches/board";
 
-// "/" is the home: the hero (what the site is, what you can do) over the Live launches board.
+// "/" is the home (nav "Launches"): one title line + the token search over the full launch board.
 // /launches renders the very same board without the hero.
-const TITLE = "Exit Liquidity · See who's in line before you buy";
+const TITLE = "Exit Liquidity · Launches: every vibe/vibe token, graded";
 
 export const metadata: Metadata = {
   title: { absolute: TITLE },

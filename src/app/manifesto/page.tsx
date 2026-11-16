@@ -19,8 +19,8 @@ export const metadata: Metadata = {
 function PhonePair({ a, b }: { a: Skin; b: Skin }) {
   return (
     <div className={styles.phonePair} aria-hidden>
-      <Sprite skin={a} scale={a === "doorghost" ? 1.25 : 2} face="right" className={styles.pairSprite} />
-      <Sprite skin={b} scale={b === "doorghost" ? 1.25 : 2} face="left" className={styles.pairSprite} />
+      <Sprite skin={a} scale={2} face="right" className={styles.pairSprite} />
+      <Sprite skin={b} scale={2} face="left" className={styles.pairSprite} />
     </div>
   );
 }
@@ -111,7 +111,7 @@ export default function Manifesto() {
               <Sprite
                 key={s}
                 skin={s}
-                scale={s === "doorghost" ? 1.25 : 2}
+                scale={2}
                 face="right"
                 className={styles.castSprite}
                 style={{ animationDelay: `${i * 0.14}s` }}

@@ -1,0 +1,26 @@
+/* The site's one loader (components/ui/Loader.tsx + AsciiCrowd.tsx): ASCII traders walking into the EXIT door,
+   drawn on a canvas. The canvas box is sized here so the server-rendered page holds the space (no layout shift). */
+
+/* ---------- scene ---------- */
+.scene { display: grid; gap: 8px; justify-items: start; min-width: 0; }
+.center { justify-items: center; text-align: center; }
+.stage { display: block; width: 100%; max-width: 300px; height: 90px; }
+.cap { margin: 0; color: var(--t2); font: 400 13px/20px var(--f-num); }
+
+/* ---------- mini: one small trader and a tiny door ---------- */
+.mini { display: inline-flex; align-items: center; gap: 10px; vertical-align: middle; min-width: 0; }
+.miniCv { display: block; flex: none; width: 44px; height: 24px; }
+.miniCv.miniTall { width: 64px; height: 60px; }
+.mini .cap { font-size: 12px; line-height: 16px; color: var(--t3); }
+
+/* ---------- skeleton bars: a soft left-to-right sweep ---------- */
+.shimmer {
+  background: var(--s2) linear-gradient(90deg, transparent 0 35%, rgba(233, 237, 233, .07) 50%, transparent 65% 100%) no-repeat;
+  background-size: 300% 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+@keyframes shimmer { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .shimmer { animation: none; }
+}

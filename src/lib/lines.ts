@@ -2,10 +2,11 @@
 // Read-only, straight from the chain. Unknown is reported as unknown, never as zero.
 import "server-only";
 import { erc20Abi, parseAbi, type Address } from "viem";
-import { ACTIVE_TOKEN, IS_LIVE, EXIT_CREATOR } from "./config";
+import { ACTIVE_TOKEN, IS_LIVE } from "./config";
 import { client, cleanText, fetchLaunch, loadEvents, toBalanceEvents, tokensReceivedBy, verifyLaunches, ZERO, type LaunchMeta } from "./chain";
-import { buildQueue, curvePrice, TIERS, type QueueState } from "./queue";
-import { buildState, PLUMBING } from "./service";
+import { buildQueue, curvePrice, type QueueState } from "./queue";
+import { buildState } from "./service";
+import { PLUMBING } from "./factories";
 import { stockBalances, STOCK_TOKENS } from "./stocks";
 import { BoundedTtlMap } from "./bounded";
 
@@ -264,62 +265,3 @@ export async function tokenLine(token: string): Promise<TokenLine | null | "busy
   }
 }
 
-export type PlaceInfo = {
-  token: string;
-  name: string;
-  symbol: string;
-  status: "in_line" | "exited" | "never" | "unknown" | "busy";
-  place?: number;
-  inLine: number;
-  ahead?: number;
-  behind?: number;
-  exitedAhead?: number; // people who stood ahead of you when you got in and have walked out since
-  exitSignalPct?: number; // exitedAhead / everyone who stood ahead of you when you got in (absent if nobody did)
-  lp?: number;
-  rank?: string;
-  skin?: string;
-  enteredTs?: number;
-  progressBps: number;
-  isCreator?: boolean;
-  stale?: boolean; // read from an old snapshot of the $EXIT line: don't cache
-};
-
-export async function placeIn(token: string, wallet: string): Promise<PlaceInfo> {
-  const t = token.toLowerCase();
-  const w = wallet.toLowerCase();
-  const line = await tokenLine(t);
-  if (line === "busy") return { token: t, name: "", symbol: "", status: "busy", inLine: 0, progressBps: 0 };
-  if (!line) return { token: t, name: "", symbol: "", status: "unknown", inLine: 0, progressBps: 0 };
-  const { meta, state } = line;
-  const base = { token: t, name: meta.name, symbol: meta.symbol, inLine: state.totals.inLine, progressBps: meta.progressBps, ...(line.stale ? { stale: true } : {}) };
-  const me = state.line.find((e) => e.wallet === w);
-  if (!me) {
-    const gone = state.exits.find((x) => x.wallet === w);
-    return { ...base, status: gone ? "exited" : "never", place: gone?.exitedAtPlace };
-  }
-  // distinct people who were ahead of me when I got in and have left since (not me, not those back in line)
-  const inLineNow = new Set(state.line.map((e) => e.wallet));
-  const gone = new Set<string>();
-  for (const x of state.exits) {
-    // walk-ins (in and out within the hour) are hidden from the Hall, so they don't count as "left" either
-    if (x.wallet === w || inLineNow.has(x.wallet) || x.quick) continue;
-    if (x.enteredBlock < me.enteredBlock && x.exitedBlock >= me.enteredBlock) gone.add(x.wallet);
-  }
-  const exitedAhead = gone.size;
-  const before = me.ahead + exitedAhead;
-  const creator = meta.creator || (IS_LIVE && t === ACTIVE_TOKEN ? EXIT_CREATOR : "");
-  return {
-    ...base,
-    status: "in_line",
-    place: me.place,
-    ahead: me.ahead,
-    behind: me.behind,
-    exitedAhead,
-    exitSignalPct: before > 0 ? Math.round((exitedAhead / before) * 100) : undefined,
-    lp: Math.round(me.lp * 100) / 100,
-    rank: me.isCreator ? "The Dev" : TIERS.find((x) => x.tier === me.tier)?.name,
-    skin: me.skin,
-    enteredTs: me.enteredTs,
-    isCreator: !!creator && creator === w,
-  };
-}

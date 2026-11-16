@@ -1,14 +1,12 @@
-/* /exit below the hero: the four rules and the cast. Air + hairlines, one heading size, numbers in mono green. */
+/* /exit below the hero: the four rules, the cast and who walked out. Air + hairlines, one heading size. */
 .sec { padding: var(--sp-8) 0; border-top: 1px solid var(--line); }
 
 .h2 { margin: 0 0 var(--sp-6); font: 600 20px/28px var(--f-ui); color: var(--t1); text-wrap: balance; }
-.h3 { margin: var(--sp-3) 0 var(--sp-2); font: 600 15px/22px var(--f-ui); color: var(--t1); text-wrap: balance; }
 .num { font: 400 13px/16px var(--f-num); font-variant-numeric: tabular-nums; color: var(--exit); }
 
-/* rules: four columns, no frames */
-.cols4 { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--sp-6); margin: 0; padding: 0; list-style: none; }
-.item { min-width: 0; }
-.item p { margin: 0; color: var(--t2); font: 400 14px/22px var(--f-ui); }
+/* rules: four short lines */
+.rules { display: grid; gap: var(--sp-3); margin: 0; padding: 0; list-style: none; color: var(--t1); font: 500 16px/24px var(--f-ui); }
+.rules li { display: flex; align-items: baseline; gap: var(--sp-4); }
 .fine { margin: var(--sp-7) 0 0; color: var(--t3); font: 400 13px/20px var(--f-ui); }
 .fine a { color: var(--t1); text-decoration: underline; text-decoration-thickness: 1px; text-decoration-color: color-mix(in srgb, var(--t1) 40%, transparent); text-underline-offset: 3px; }
 .fine a:hover { color: var(--exit); text-decoration-color: var(--exit); }
@@ -24,16 +22,28 @@
 .rank b { font: 600 15px/22px var(--f-ui); color: var(--t1); }
 .req { font: 400 13px/20px var(--f-num); color: var(--t2); font-variant-numeric: tabular-nums; }
 
+/* walked out (the former /hall): a plain compact table */
+.hallSec { scroll-margin-top: var(--hdr-h); }
+.hallMsg { margin: 0 0 var(--sp-4); color: var(--t3); font: 400 13px/20px var(--f-ui); }
+.hall { max-width: 720px; }
+.hallRow {
+  display: grid; grid-template-columns: 1.2fr 0.8fr 1fr 0.8fr; gap: var(--sp-3); align-items: center; min-height: 40px;
+  border-bottom: 1px solid var(--line); color: var(--t1); font: 400 14px/20px var(--f-num); font-variant-numeric: tabular-nums;
+  text-decoration: none !important;
+}
+a.hallRow:hover { background: var(--s2); }
+.hallHead { min-height: 28px; align-items: end; padding-bottom: 6px; color: var(--t3); font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; }
+.hallPlace { color: var(--down); }
+.hallWhen { color: var(--t3); font-size: 13px; }
+
 @media (max-width: 1000px) {
-  .cols4 { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: var(--sp-6); }
   .ranks { grid-template-columns: repeat(3, minmax(0, 1fr)); row-gap: var(--sp-6); }
 }
 @media (max-width: 760px) {
   .sec { padding: var(--sp-7) 0; }
-  .cols4 { grid-template-columns: 1fr; gap: var(--sp-5); }
-  .item { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: var(--sp-3); }
-  .item .num { grid-row: span 2; padding-top: 5px; }
-  .item .h3 { margin-top: 0; }
   .ranks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rankPic { height: 64px; }
+  /* wallet / left from / when */
+  .hallRow { grid-template-columns: 1fr auto auto; gap: 14px; }
+  .hallRow > span:nth-child(3) { display: none; }
 }

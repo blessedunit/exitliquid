@@ -2,12 +2,13 @@
 // Signals, not verdicts: every penalty is a reason to look closer, never proof of anything.
 //
 // Inputs are the token's own full Transfer history (the same raw log the line is built from)
-// and the Early Index (src/data/early-index.json, rebuilt hourly by the hourly index job, read at runtime by lib/earlyIndex.ts):
+// and the Early Index (src/data/early-index.json, rebuilt hourly by ops/early_index.py, read at runtime by lib/earlyIndex.ts):
 // wallet labels "known sniper bot", "farm group", "verified early".
 // Pure logic, no network and no server-only imports: the route feeds it, tests can too.
 // Unknown is never zero: a signal we can't read is shown as "unknown" and never penalised.
 
 import type { RawTransfer } from "./chain";
+import { POOL_MANAGER } from "./factories";
 
 export type EarlyIndex = {
   generatedAt: number; // unix seconds
@@ -18,6 +19,8 @@ export type EarlyIndex = {
   verifiedEarly: string[];
   sniperMinTokens?: number;
   baseGradRate?: number;
+  /** first-20 entries per sniper in the window (ops/early_index.py since 16.10) */
+  sniperEntries?: Record<string, number>;
 };
 
 export type Severity = "good" | "info" | "low" | "medium" | "high" | "unknown";
@@ -51,7 +54,6 @@ export type HealthInput = {
   nowSec: number;
 };
 
-const POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951"; // graduated tokens buy from the V4 pool
 const FIRST = 20;
 const BONUS_SCAN = 50; // verified-early wallets count anywhere in the first 50
 const HOUR_BLOCKS = 22_000; // ~1 h at 0.165 s/block (same as queue MATURE_BLOCKS)

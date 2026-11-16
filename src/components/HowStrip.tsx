@@ -23,9 +23,7 @@ export default function HowStrip({ lead, variant = "strip" }: { lead?: ReactNode
         <p className={styles.hint}>
           <span>Buy ≥ 0.0003 ETH <i aria-hidden="true">→</i> get in line</span>
           <span className={styles.sep} aria-hidden="true">·</span>
-          <span>each new buyer behind you (≥ 0.003 ETH) = <b>+1 pt</b></span>
-          <span className={styles.sep} aria-hidden="true">·</span>
-          <span>sell <i aria-hidden="true">→</i> your points go to the line</span>
+          <span>sell <i aria-hidden="true">→</i> walk out, the line moves up</span>
         </p>
         {button}
       </div>

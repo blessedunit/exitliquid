@@ -20,14 +20,9 @@ const SLIDES: { title: string; text: string; cast: Skin[] }[] = [
     cast: ["hood"],
   },
   {
-    title: "New buyers pay you points",
-    text: "Every new buyer with 0.003 ETH+ gives +1 point to everyone ahead of them.",
-    cast: ["plain", "bag", "getaway"],
-  },
-  {
     title: "Sell = walk out",
-    text: "Sell your bag and you walk out. Your points go to everyone behind you, and they move up.",
-    cast: ["ghost"],
+    text: "Sell your bag and you walk out. Everyone behind you moves up.",
+    cast: ["plain", "ghost", "bag"],
   },
   {
     title: "The door opens at 100%",
@@ -99,7 +94,7 @@ export default function Guide({ open, onClose, returnFocus }: { open: boolean; o
         </div>
         <div className={styles.stage} aria-hidden>
           {s.cast.map((k, n) => (
-            <Sprite key={`${i}-${k}-${n}`} skin={k} scale={k === "doorghost" ? 0.8 : 1} face="right" className={styles.sprite} />
+            <Sprite key={`${i}-${k}-${n}`} skin={k} scale={1} face="right" className={styles.sprite} />
           ))}
           {i === 0 || last ? <span className={styles.door}><b>EXIT</b></span> : null}
         </div>

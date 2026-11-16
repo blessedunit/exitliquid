@@ -2,7 +2,7 @@
 // Reads the snapshot /api/state already keeps (memory, then Redis): no chain reads of its own.
 // A rendered card is kept for an hour per process, so a weekly post or a burst of downloads costs one render
 // (redrawn sooner only when the card is 15+ min old and a newer snapshot has landed).
-// No snapshot yet -> a "Reading the chain" card, never cached, header x-card: warming (the weekly state job retries).
+// No snapshot yet -> a "Reading the chain" card, never cached, header x-card: warming (ops/weekly_state.py retries).
 import { after } from "next/server";
 import { ImageResponse } from "next/og";
 import { ogFonts, OG } from "@/lib/og";
@@ -61,7 +61,8 @@ function pct(num: number | null | undefined, den: number | null | undefined): st
 }
 function eth(v: number): string {
   if (!ok(v)) return "—";
-  if (v >= 1000) return `${(v / 1000).toFixed(1)}K`;
+  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2)}M`;
+  if (v >= 1000) return Math.round(v).toLocaleString("en-US"); // "1,924", not "1.9K": close leaders must not read as one number
   if (v >= 100) return v.toFixed(0);
   if (v >= 10) return v.toFixed(1);
   if (v >= 1) return v.toFixed(2);
@@ -91,7 +92,7 @@ function Frame({ children }: { children: React.ReactNode }) {
         {children}
       </div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "26px 64px", borderTop: hair, background: OG.bg2 }}>
-        <div style={{ display: "flex", fontSize: 24, color: OG.muted }}>Signals, not verdicts. Read from the chain.</div>
+        <div style={{ display: "flex", fontSize: 24, color: OG.muted }}>Read from the chain.</div>
         <div style={{ display: "flex", fontFamily: "Pixel", fontSize: 34, color: OG.exit, letterSpacing: 2 }}>EXITLIQUID.FUN</div>
       </div>
       <div style={{ display: "flex", height: 10, background: OG.exit }} />

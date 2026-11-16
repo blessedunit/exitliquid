@@ -1,9 +1,18 @@
-// 24 h price sparkline, 56x16 (spec §3.1): one polyline on a 0..1000 grid (see Spark in lib/launches).
+// Price sparkline, 56x16 (spec §3.1): one polyline on a 0..1000 grid (see Spark in lib/launches).
+// The window is the last 24 h, or the token's whole life when it is younger (data.life, v6 rows).
 // Green when the last close is above the first in the window, red below, grey when flat or unknown.
 // undefined = still loading, null = unknown right now, empty = no trade in the last 24 h.
 import styles from "./Sparkline.module.css";
 
-export type SparkData = { x: number[]; y: number[]; chgBps: number | null };
+export type SparkData = {
+  x: number[]; y: number[]; chgBps: number | null;
+  /** the line covers the whole life of a token younger than 24 h */
+  life?: boolean;
+  /** v6 extras from the same candles: trades in the window, the last hour's ETH volume, buys and sells */
+  trades?: number; vol1hEth?: number | null; buys1h?: number; sells1h?: number;
+  /** the last hour only (the board's 1h view) */
+  h1?: { x: number[]; y: number[]; chgBps: number | null; life?: boolean; trades?: number } | null;
+};
 
 const W = 56;
 const H = 16;
@@ -14,23 +23,24 @@ function pctText(bps: number) {
   return `${p >= 1000 ? `${(p / 1000).toFixed(1)}k` : p >= 100 ? p.toFixed(0) : p.toFixed(1)}%`;
 }
 
-export default function Sparkline({ data, className }: { data: SparkData | null | undefined; className?: string }) {
+export default function Sparkline({ data, className, period = "24h" }: { data: SparkData | null | undefined; className?: string; period?: "1h" | "24h" }) {
+  const win = period === "1h" ? "1 h" : "24 h";
   const cls = `${styles.sp} ${className ?? ""}`;
   if (data === undefined) {
-    return <svg className={`${cls} ${styles.wait}`} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="24 h price chart loading"><rect className={styles.base} x="0" y={H / 2} width={W} height="1" /></svg>;
+    return <svg className={`${cls} ${styles.wait}`} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${win} price chart loading`}><rect className={styles.base} x="0" y={H / 2} width={W} height="1" /></svg>;
   }
   if (data === null) {
     return (
-      <svg className={cls} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="24 h price chart unknown right now">
-        <title>24 h price chart unknown right now</title>
+      <svg className={cls} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${win} price chart unknown right now`}>
+        <title>{`${win} price chart unknown right now`}</title>
         <rect className={styles.base} x={W / 2 - 6} y={H / 2} width="12" height="1" />
       </svg>
     );
   }
   if (!data.x.length) {
     return (
-      <svg className={cls} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label="No trades in the last 24 h">
-        <title>No trades in the last 24 h</title>
+      <svg className={cls} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`No trades in the last ${win}`}>
+        <title>{`No trades in the last ${win}`}</title>
         <rect className={styles.none} x="0" y={H / 2} width={W} height="1" />
       </svg>
     );
@@ -44,8 +54,8 @@ export default function Sparkline({ data, className }: { data: SparkData | null 
       return `${px.toFixed(1)},${py.toFixed(1)}`;
     })
     .join(" ");
-  const label =
-    dir === "flat" ? "24 h price: flat" : `24 h price: ${dir} ${pctText(c ?? 0)} from the first to the last trade of the day`;
+  const span = data.life ? "Price since launch" : `${win} price`;
+  const label = dir === "flat" ? `${span}: flat` : `${span}: ${dir} ${pctText(c ?? 0)} from the first to the last trade`;
   return (
     <svg className={`${cls} ${styles[dir]}`} width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={label}>
       <title>{label}</title>

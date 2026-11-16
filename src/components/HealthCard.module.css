@@ -1,20 +1,4 @@
-/* Line health block: the reasons behind the grade (square by severity + label + points, detail under it) and the
-   first 20 buyers. The block shell (head, sub-heads, chips) comes from analytics.module.css. */
-
-.reasons { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
-.reason { display: grid; grid-template-columns: 6px minmax(0, 1fr) auto; align-items: start; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
-/* severity square: red = high, light = medium, grey = low / info, green = good; dashed = unknown */
-.sq { width: 6px; height: 6px; margin-top: 7px; background: var(--t3); }
-.s_high .sq { background: var(--down); }
-.s_medium .sq { background: var(--t1); }
-.s_good .sq { background: var(--exit); }
-.s_unknown .sq { background: transparent; box-shadow: inset 0 0 0 1px var(--t3); }
-.rBody { display: grid; gap: 2px; min-width: 0; }
-.rLabel { margin: 0; color: var(--t1); font: 400 14px/20px var(--f-ui); }
-.s_low .rLabel, .s_info .rLabel { color: var(--t2); }
-.rDetail { margin: 0; color: var(--t3); font: 400 12px/18px var(--f-ui); }
-.pts { color: var(--t3); font: 400 13px/20px var(--f-num); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.s_high .pts { color: var(--down); }
+/* The first 20 buyers. The block shell (head, chips) comes from analytics.module.css. */
 
 /* first 20 buyers: rank · wallet · label · holds/left */
 .bList { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }

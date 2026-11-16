@@ -39,3 +39,10 @@
 
 /* phones: the zoomed corridor is clipped to its own frame (it used to spill past the card edge) */
 @media (max-width: 700px) { .svg { overflow: hidden; } }
+
+/* the front of the line: a first buyer who sold everything stays in the picture, grey and see-through;
+   marks over a head (sniper red, farm white, bundled amber outline) don't hop with the sprite */
+.ghostP { opacity: .42; filter: grayscale(1); }
+.ghostP:hover { opacity: .7; filter: grayscale(1) brightness(1.15); }
+.selected.ghostP { opacity: .8; }
+.mark { pointer-events: none; }

@@ -9,22 +9,8 @@ import type { Hex } from "viem";
 import { client } from "./chain";
 import { BoundedTtlMap } from "./bounded";
 import { beat } from "./beacon";
+import { PLUMBING } from "./factories";
 
-// vibe/vibe protocol contracts that move tokens but are never people.
-export const PLUMBING = [
-  "0x40f1be6faf8dab9c143cce1a0a04c2075fb2df59", // factory
-  "0xa6a5d4c098da8f79eae1203a8e42ff9ac7a17f06", // graduation adapter
-  "0x2779651fee12f6fb5a187578de6b63709f85d0cc", // fee hook
-  "0xc0a2deebdc40b7083dc9a067f6992f884fb6074d", // liquidity locker
-  "0x91719a47f855079678b3d5e3af69cde2b830c5c9", // protocol treasury
-  "0x8366a39cc670b4001a1121b8f6a443a643e40951", // v4 pool manager
-  "0x8876789976decbfcbbbe364623c63652db8c0904", // universal router
-  "0x000000000022d473030f116ddee9f6b43ac78ba3", // permit2
-  "0x000000000000000000000000000000000000dead",
-  "0x0d0c44bfeb2a60f9b81c221c4cd24ca89acbacec", // legacy liquidity locker
-  "0x1ed9e88ae14713ca4bc964bade2bc1e3f5cd501a", // legacy graduation adapter
-  "0xc5b22f31f247a6ee33592792d44bde31c0ef10cc", // legacy fee hook
-];
 
 export type Built = {
   mode: Mode;
@@ -224,7 +210,7 @@ function unavailableState(): Built {
     state: { line: [], exits: [], feed: [], totals: { inLine: 0, exited: 0, everJoined: 0, lpIssued: 0 } },
     trades: [],
     block: 0,
-    note: "The chain isn't answering. Retrying.",
+    note: "The chain isn't answering.",
     unavailable: true,
   };
 }

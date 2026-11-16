@@ -1,7 +1,8 @@
 "use client";
-// LIVE LAUNCHES: every vibe/vibe token as one live row of the board (minimal spec §3.1): grade, a thin
-// progress bar to the door, holders, volume, the 24 h line and B/S; a row lights up when someone buys.
-// One toolbar above it: the list (tabs), Sort, How to read (a popover) and Refresh.
+// LIVE LAUNCHES: every vibe/vibe token as one live row of the board (minimal spec §3.1): the price line (24 h, or
+// the whole life of a younger token) with its %, a thin progress bar to the door, holders, volume and B/S 1h;
+// a row lights up when someone buys. v6 rows take their last hour (volume, B/S) from the same candles.
+// One toolbar above it: the list (tabs), Sort and Refresh.
 import Link from "next/link";
 import EmptyState from "@/components/ui/EmptyState";
 import Term from "@/components/ui/Term";
@@ -13,21 +14,25 @@ import TokenAvatar from "@/components/TokenAvatar";
 import type { LaunchCard as Card } from "@/lib/launches";
 import { toggleWatch, useWatchlist } from "./watch";
 import { deltaOf, markSeen, moved, readSeen, seedSeen, useSeen, type Delta, type SeenMap } from "./seen";
-import { boardQuery, DEFAULT_SORT, FILTER_IDS, naturalDir, parseBoard, type BoardState, type Dir, type FilterId, type Period, type SortKey, type Tab } from "./state";
-import { applyFilters, chipsFor, FILTERS, gradeTone, SIG_WINDOW, SIG_WINDOW_FILTERED, sigTitle, useSignals, type SigEntry, type SigMap } from "./signals";
+import { boardQuery, DEFAULT_SORT, naturalDir, parseBoard, type BoardState, type Dir, type FilterId, type Period, type SortKey, type Tab } from "./state";
+import { applyFilters, FILTERS, SIG_WINDOW, SIG_WINDOW_FILTERED, useSignals, type SigMap } from "./signals";
 import styles from "./launches.module.css";
 import BoardingRows from "./Boarding";
 import { fmtEth } from "@/lib/format";
+import { GradeBadge } from "@/components/screener/Grade";
+import { useScreener } from "@/components/screener/useScreener";
+import { VERDICT_LABEL, type ScreenerRow } from "@/lib/screener-types";
 
 type Page = { items: Card[]; next: string | null; v6?: "ok" | "error" | "off"; missing?: string[] };
-type Conn = "ok" | "retry" | "limited";
+// "down" is terminal: MAX_TRIES failures in a row, the automatic retries stop, "Try again" starts them over
+type Conn = "ok" | "retry" | "limited" | "down";
+const MAX_TRIES = 5;
+const hhmm = (ms: number) => new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
 // ids unchanged (shared ?tab= links keep working); one caption line under the tabs says what the list is
 const TABS: { id: Tab; label: string; short?: string; caption: string }[] = [
-  { id: "hot", label: "Trending", caption: "Most traded right now, in vibe/vibe's order." },
+  // Trending / Near graduation / Graduated are hidden: they read vibe's v1 index, frozen since 29.09 (see ./state)
   { id: "new", label: "New", caption: "Newest launches first." },
-  { id: "door", label: "Near graduation", short: "Near grad", caption: "Closest to 5 ETH on the curve, the point where trading moves to a V4 pool." },
-  { id: "grad", label: "Graduated", caption: "Reached 5 ETH and moved to a V4 pool." },
   { id: "watch", label: "☆ Watchlist", short: "☆ Pins", caption: "Tokens you pinned with ☆. Saved in this browser." },
 ];
 const POLL_MS = 30_000; // the board is CDN-cached 30 s (api/launches)
@@ -36,14 +41,16 @@ const WATCH_MAX = 60; // 3 calls at most (the list itself keeps 50)
 const EXTRA_REFRESH = 40; // rows loaded with "More" refreshed per poll (2 calls), oldest first
 const STALE_MS = POLL_MS * 2 + 5_000;
 const PART_ADDR = /^0x[0-9a-fA-F]{4,39}$/;
-const SPARK_MS = 300_000; // sparklines are CDN-cached 5 min (api/spark): no point asking more often
+const SPARK_MS = 60_000; // price lines are CDN-cached 60 s (api/spark): no point asking more often
 const SPARK_CHUNK = 24; // one board page per call (the first chunk is the same for every viewer: CDN-cached)
 const SPARK_MAX = 120; // 5 calls at most per refresh
+const SPARK_RETRY_MS = 12_000; // a row the server left out (slow upstream) is asked again this soon
+const YOUNG_S = 2 * 3600; // v6 rows under 2 h draw from 1m candles, older ones from 5m
 const SEEN_AFTER_MS = 30_000; // 30 s on the Watchlist = seen
 const BG_WATCH_MS = 120_000; // off the Watchlist tab: check the pinned tokens every 2 min for the "new" counter
 const LIST_CACHE_MAX = 10; // lists kept in memory for an instant tab switch (shown at once, refreshed behind)
 const PENDING_MAX = 50; // New tab: tokens held behind the "↑ N new" pill
-const HOW_ID = "board-how"; // the How to read popover
+
 
 // the list's own order, named for what it is on each tab
 const rankTitle = (t: Tab) => (t === "hot" ? "vibe/vibe trending order" : t === "watch" ? "your pin order" : "list order");
@@ -56,17 +63,26 @@ function sortLabel(k: SortKey, period: Period, tab: Tab = "hot"): string {
     case "eta": return "Soonest ETA";
     case "holders": return "Holders";
     case "vol": return `Vol ${period}`;
-    case "chg": return "Price 1h %";
+    case "chg": return "Price %";
     case "buys": return "Buys 1h";
     case "sig": return "Grade";
   }
 }
 // only columns the viewer can see are offered: holders hide under 1080 px, volume (and its period) on phones
-const SORTS_WIDE: SortKey[] = ["rank", "new", "door", "eta", "sig", "holders", "vol", "chg", "buys"];
-const SORTS_MID: SortKey[] = ["rank", "new", "door", "eta", "sig", "vol", "chg", "buys"];
-const SORTS_PHONE: SortKey[] = ["rank", "new", "door", "eta", "sig", "chg", "buys"];
+// (Grade is no column any more: a ?sort=sig link still sorts, and stays in the menu, see sortOptions)
+const SORTS_WIDE: SortKey[] = ["rank", "new", "door", "eta", "chg", "holders", "vol", "buys"];
+const SORTS_MID: SortKey[] = ["rank", "new", "door", "eta", "chg", "vol", "buys"];
+const SORTS_PHONE: SortKey[] = ["rank", "new", "door", "eta", "chg", "buys"];
+type SparkMap = ReadonlyMap<string, SparkData | null>;
+// the line for the chosen period: 24 h (or since launch), or the last hour only. undefined = loading, null = unknown
+// (an older server answer without the hour line is unknown for 1h, never the 24 h line under a 1h label)
+const sparkFor = (s: SparkData | null | undefined, period: Period): SparkData | null | undefined =>
+  period === "24h" || !s ? s : s.h1 ? { ...s.h1, trades: s.trades } : null;
+// the % beside the line: first to last trade of the window; null = unknown or no line
+// (trades = the whole life's count: under 2 there is no line yet, in either period)
+const sparkChg = (s: SparkData | null | undefined) => (s && s.x.length && (s.trades === undefined || s.trades >= 2) ? s.chgBps : null);
 
-function sortValue(c: Card, k: SortKey, period: Period, rank: number, sig: SigMap): number | null {
+function sortValue(c: Card, k: SortKey, period: Period, rank: number, sig: SigMap, spark: SparkMap): number | null {
   switch (k) {
     case "sig": {
       // Line Health score; rows not graded (unknown, too early, v6, outside the window) always last
@@ -79,15 +95,15 @@ function sortValue(c: Card, k: SortKey, period: Period, rank: number, sig: SigMa
     case "eta": return c.etaHours; // stalled and unknown are null: always last
     case "holders": return c.holders;
     case "vol": return period === "1h" ? c.volume1hEth : c.volume24hEth;
-    case "chg": return c.change1hBps;
+    case "chg": return sparkChg(sparkFor(spark.get(c.token), period));
     case "buys": return c.buys1h;
   }
 }
 
-function sortRows(ranked: { c: Card; i: number }[], key: SortKey, dir: Dir, period: Period, sig: SigMap): Card[] {
+function sortRows(ranked: { c: Card; i: number }[], key: SortKey, dir: Dir, period: Period, sig: SigMap, spark: SparkMap = new Map()): Card[] {
   const sign = dir === "desc" ? -1 : 1;
   return ranked
-    .map((x) => ({ ...x, v: sortValue(x.c, key, period, x.i, sig) }))
+    .map((x) => ({ ...x, v: sortValue(x.c, key, period, x.i, sig, spark) }))
     .sort((a, b) => {
       if (a.v === null && b.v === null) return a.i - b.i;
       if (a.v === null) return 1; // unknown always last, never counted as zero
@@ -139,7 +155,8 @@ function chgText(bps: number) {
   const body = a >= 1000 ? `${(a / 1000).toFixed(1)}k` : a >= 100 ? a.toFixed(0) : a.toFixed(1);
   return `${p > 0 ? "+" : p < 0 ? "−" : ""}${body}%`;
 }
-const taxText = (bps: number) => `${(bps / 100).toFixed(bps % 100 ? 1 : 0)}% tax`;
+// unknown tax is a dash, never "0% tax"
+const taxText = (bps: number | null) => (bps === null ? "tax —" : `${(bps / 100).toFixed(bps % 100 ? 1 : 0)}% tax`);
 // New tab: how the first minutes went, from numbers already in the list. A 1h window covers the whole life of
 // a token under an hour old (and 24 h for v6), so there it reads "so far"; older, the window is named.
 function earlyText(c: Card, ageS: number | null): { text: string; hot: boolean } | null {
@@ -273,9 +290,12 @@ export default function Launches({ initial: served, board: servedBoard, home = f
   const [state, setState] = useState<"loading" | "ok" | "error" | "more">(initial ? "ok" : "loading");
   // no first page from the server (slow or failed) is not an error yet: the client load right after decides
   const [conn, setConn] = useState<Conn>("ok");
+  const fails = useRef(0); // failed loads in a row
+  const [lastTry, setLastTry] = useState<number | null>(null);
+  const down = conn === "down";
   const [flash, setFlash] = useState<Record<string, number>>({}); // token -> new buys since the last look (-1 = new row)
   const [period, setPeriod] = useState<Period>(board.period);
-  // filter chips were removed from the board : the list always shows every row
+  // filter chips were removed from the board (operator, 03.10): the list always shows every row
   const [filters, setFilters] = useState<FilterId[]>([]);
   const [sort, setSort] = useState<{ key: SortKey; dir: Dir }>({ key: board.sort, dir: board.dir });
   const [now, setNow] = useState<number | null>(null); // ages appear after mount: no server/client clock mismatch
@@ -305,7 +325,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
   const boardRef = useRef<HTMLDivElement>(null);
   // rows fade in once, when a list replaces the boarding screen (never on re-sorts or refreshes):
   // the render that swaps loading for rows already carries the fading overlay, so no frame ever cuts
-  const isLoading = state === "loading" || (state === "error" && items.length === 0);
+  const isLoading = state === "loading" || (state === "error" && items.length === 0 && !down);
   const [wasLoading, setWasLoading] = useState(isLoading);
   const [leaving, setLeaving] = useState(false); // boarding screen fading out over the fresh rows
   if (wasLoading !== isLoading) {
@@ -353,10 +373,17 @@ export default function Launches({ initial: served, board: servedBoard, home = f
   }, []);
 
   const fail = useCallback((e: unknown) => {
-    if (e instanceof HttpError && e.status === 429) {
+    fails.current++;
+    setLastTry(Date.now());
+    if (fails.current >= MAX_TRIES) setConn("down");
+    else if (e instanceof HttpError && e.status === 429) {
       setConn("limited");
       pauseUntil.current = Date.now() + Math.min(60, Math.max(5, e.retryAfter || 30)) * 1000;
     } else setConn("retry");
+  }, []);
+  const connOk = useCallback(() => {
+    fails.current = 0;
+    setConn("ok");
   }, []);
 
   const load = useCallback(
@@ -413,7 +440,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
             setNext(null);
             setMissing([]);
             setState("ok");
-            setConn("ok");
+            connOk();
             setUpdatedAt(Date.now());
             return;
           }
@@ -436,7 +463,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
           setSeenAt(new Map(fetchedAt.current));
           setState("ok");
           if (bad) fail(bad.reason);
-          else setConn("ok");
+          else connOk();
           return;
         }
         const url = `/api/launches?tab=${t}${qq ? `&q=${encodeURIComponent(qq)}` : ""}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
@@ -500,7 +527,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
         if (!cursor) setUpdatedAt(Date.now());
         setSeenAt(new Map(fetchedAt.current));
         setState("ok");
-        setConn("ok");
+        connOk();
       } catch (e) {
         if (id !== reqId.current) return; // cut off by a newer load: that one reports
         fail(e);
@@ -512,7 +539,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
           }
           setState(cursor ? "ok" : "error");
         }
-        // quiet (rows on screen): the rows stay, the pill says "Reconnecting…" over them
+        // quiet (rows on screen): the rows stay, the toolbar says "Stale" over them
       } finally {
         if (id === reqId.current) {
           inflight.current = false;
@@ -521,7 +548,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
         }
       }
     },
-    [fail],
+    [fail, connOk],
   );
 
   // the watch tab reloads when the list of stars changes; other tabs don't care about stars
@@ -535,16 +562,18 @@ export default function Launches({ initial: served, board: servedBoard, home = f
       return;
     }
     skipKey.current = null;
+    fails.current = 0; // another list: its own tries
     const t = setTimeout(() => void load(tab, query, null), 0);
     return () => clearTimeout(t);
   }, [tab, query, watchKey, load]);
 
-  // the board is alive: refresh while the tab is visible; a failed board keeps retrying (after a 429: after retry-after)
+  // the board is alive: refresh while the tab is visible; a failed board retries (after a 429: after retry-after)
+  // until MAX_TRIES failures in a row, then it stops and says so ("Try again" starts over)
   // (hidden browser tab: no requests at all; back on it after a while: one refresh right away, not a wait of up to 15 s)
   useEffect(() => {
     let last = Date.now();
     const tick = () => {
-      if (document.visibilityState !== "visible" || Date.now() < pauseUntil.current) return;
+      if (document.visibilityState !== "visible" || Date.now() < pauseUntil.current || fails.current >= MAX_TRIES) return;
       last = Date.now();
       const same = listKey.current === `${tab}|${query}` && itemsRef.current.length > 0;
       void load(tab, query, null, same);
@@ -573,6 +602,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
   // Refresh: the same list, fresh numbers; tab, page, sort and search stay as they are
   const refresh = () => {
     if (manualBusy) return;
+    fails.current = 0;
     void load(tab, query, null, listKey.current === `${tab}|${query}` && itemsRef.current.length > 0, true);
   };
   // "↑ N new": the held launches go on top, and the view goes to them
@@ -640,43 +670,60 @@ export default function Launches({ initial: served, board: servedBoard, home = f
     };
   }, [tab, watchAll]);
 
-  // 24 h sparklines for the rows on screen: v1 rows only (vibe has none for v6), a page of rows per call,
-  // each row asked again once a minute at most; a failed call leaves those rows "unknown", not flat
+  // price lines for the rows on screen, lazily after the rows: v1 rows in one batched call per page (vibe's
+  // /sparklines), v6 rows in their own call per page (the server reads one candle list per token, 6 at a time,
+  // and caches them 60 s). Each row is asked again once a minute at most; a row the server left out (slow
+  // upstream) is asked again in 12 s; a failed call leaves those rows "unknown", never flat.
+  // key: "0x…" for a v1 row, "0x…:1" / "0x…:5" for a v6 row (1m candles under 2 h of age, 5m after)
+  const nowS = now === null ? null : Math.floor(now / 1000);
   const sparkKey = items
-    .filter((c) => !c.v6)
     .slice(0, SPARK_MAX)
-    .map((c) => c.token)
+    .map((c) => (c.v6 ? (nowS === null ? "" : `${c.token}:${c.createdAt && nowS - c.createdAt < YOUNG_S ? 1 : 5}`) : c.token))
+    .filter(Boolean)
     .join(",");
   useEffect(() => {
     if (!sparkKey) return;
     let dead = false;
     const run = async () => {
       if (document.visibilityState !== "visible" || Date.now() < pauseUntil.current) return;
-      const list = sparkKey.split(",");
+      const all = sparkKey.split(",");
       const n = Date.now();
-      const need = chunks(list, SPARK_CHUNK).filter((ch) => ch.some((t) => n - (sparkAt.current.get(t) ?? 0) >= SPARK_MS));
+      const due = (k: string) => n - (sparkAt.current.get(k.split(":")[0]) ?? 0) >= SPARK_MS;
+      const v1 = all.filter((k) => !k.includes(":"));
+      const v6 = all.filter((k) => k.includes(":"));
+      const need = [
+        ...chunks(v1, SPARK_CHUNK).map((ch) => ({ ch, url: `/api/spark?tokens=${[...ch].sort().join(",")}` })),
+        ...chunks(v6, SPARK_CHUNK).map((ch) => ({ ch, url: `/api/spark?v6=${[...ch].sort().join(",")}` })),
+      ].filter((x) => x.ch.some(due));
       if (!need.length) return;
-      for (const ch of need) for (const t of ch) sparkAt.current.set(t, n); // no double asks while in flight
-      const got = await Promise.allSettled(need.map((ch) => getJson<{ items?: Record<string, SparkData> }>(`/api/spark?tokens=${[...ch].sort().join(",")}`)));
-      need.forEach((ch, i) => {
-        if (got[i].status === "rejected") for (const t of ch) sparkAt.current.delete(t); // asked again next round
+      for (const x of need) for (const k of x.ch) sparkAt.current.set(k.split(":")[0], n); // no double asks while in flight
+      const got = await Promise.allSettled(need.map((x) => getJson<{ items?: Record<string, SparkData> }>(x.url)));
+      need.forEach((x, i) => {
+        const r = got[i];
+        for (const k of x.ch) {
+          const t = k.split(":")[0];
+          if (r.status === "rejected") sparkAt.current.delete(t); // asked again next round
+          else if (!r.value.items?.[t]) sparkAt.current.set(t, n - SPARK_MS + SPARK_RETRY_MS); // left out: soon again
+        }
       });
       if (dead) return;
       setSpark((prev) => {
-        const keep = new Set(list);
+        const keep = new Set(all.map((k) => k.split(":")[0]));
         const m = new Map(prev.size < 300 ? prev : [...prev].filter(([t]) => keep.has(t)));
-        need.forEach((ch, i) => {
+        need.forEach((x, i) => {
           const r = got[i];
-          for (const t of ch) {
-            if (r.status === "fulfilled") m.set(t, r.value.items?.[t] ?? null);
-            else if (!m.has(t)) m.set(t, null);
+          for (const k of x.ch) {
+            const t = k.split(":")[0];
+            const v = r.status === "fulfilled" ? r.value.items?.[t] : undefined;
+            if (v) m.set(t, v);
+            else if (!m.get(t)) m.set(t, null); // a line already on screen stays until a fresh one replaces it
           }
         });
         return m;
       });
     };
     const t = setTimeout(() => void run(), 300);
-    const iv = setInterval(() => void run(), SPARK_MS / 2);
+    const iv = setInterval(() => void run(), SPARK_RETRY_MS);
     return () => {
       dead = true;
       clearTimeout(t);
@@ -736,15 +783,30 @@ export default function Launches({ initial: served, board: servedBoard, home = f
   const filtersD = useDeferredValue(filters);
   const emptySig = useMemo<SigMap>(() => new Map(), []);
   // every sort but Line Health: the order signals load in follows what the viewer sees first
+  // v6 rows: the list has no 1h window; their price line carries it (volume, buys, sells of the last hour)
+  const filled = useMemo(
+    () =>
+      items.map((c) => {
+        const s = c.v6 ? spark.get(c.token) : null;
+        if (!s || s.buys1h === undefined) return c;
+        return {
+          ...c,
+          volume1hEth: c.volume1hEth ?? (c.v6?.pair === "ETH" ? (s.vol1hEth ?? null) : null),
+          buys1h: c.buys1h ?? s.buys1h ?? null,
+          sells1h: c.sells1h ?? s.sells1h ?? null,
+        };
+      }),
+    [items, spark],
+  );
   const base = useMemo(() => {
     // Watchlist: an unpinned row leaves at once (no reload of the whole list for it)
     const pinnedSet = tab === "watch" ? new Set(watchD) : null;
-    const ranked = (pinnedSet ? items.filter((c) => pinnedSet.has(c.token)) : items).map((c, i) => ({ c, i }));
+    const ranked = (pinnedSet ? filled.filter((c) => pinnedSet.has(c.token)) : filled).map((c, i) => ({ c, i }));
     const sort = sortD;
     const period = periodD;
     if (sort.key === "sig" || (sort.key === "rank" && sort.dir === "desc")) return ranked.map((x) => x.c);
-    return sortRows(ranked, sort.key, sort.dir, period, emptySig);
-  }, [items, sortD, periodD, tab, watchD, emptySig]);
+    return sortRows(ranked, sort.key, sort.dir, period, emptySig, spark);
+  }, [filled, sortD, periodD, tab, watchD, emptySig, spark]);
 
   // board signals: lazily, for the first 60 rows on screen, never blocking the list; with a filter that needs
   // them on, every loaded row is asked (150 at most), so "checking" always ends
@@ -752,6 +814,13 @@ export default function Launches({ initial: served, board: servedBoard, home = f
   const sigFilterOn = filtersD.some((f) => FILTERS.some((x) => x.id === f && x.needsSignals));
   const sigMax = sigFilterOn ? SIG_WINDOW_FILTERED : SIG_WINDOW;
   const sig = useSignals(base, { paused, window: sigMax });
+  // screener grades for the rows (one shared snapshot; "—" until a token is graded)
+  const screener = useScreener();
+  const graded = useMemo(() => {
+    const m = new Map<string, ScreenerRow>();
+    for (const r of screener.data?.tokens ?? []) m.set(r.token.toLowerCase(), r);
+    return m;
+  }, [screener.data]);
   const sigWindow = useMemo(() => new Set(base.filter((c) => !c.v6).slice(0, sigMax).map((c) => c.token)), [base, sigMax]);
 
   const sorted = useMemo(
@@ -793,9 +862,6 @@ export default function Launches({ initial: served, board: servedBoard, home = f
       } else if (/^[1-5]$/.test(k)) {
         e.preventDefault();
         pickTab(TABS[Number(k) - 1].id);
-      } else if (k === "?") {
-        e.preventDefault();
-        (document.getElementById(HOW_ID) as (HTMLElement & { togglePopover?: () => void }) | null)?.togglePopover?.();
       }
     };
   });
@@ -868,8 +934,15 @@ export default function Launches({ initial: served, board: servedBoard, home = f
 
   const prefix = PART_ADDR.test(query);
   // one empty state for every "nothing to show" (never a table head over a void)
+  const tryAgain = (
+    <button type="button" className={styles.ghostBtn} onClick={refresh}>
+      Try again
+    </button>
+  );
   const empty: { title: string; body: string; action: React.ReactNode } | null =
-    state === "loading" || state === "error" || stubs.length || items.length > 0
+    down && items.length === 0 && !stubs.length
+      ? { title: "Can't load launches right now.", body: lastTry === null ? "" : `Last try ${hhmm(lastTry)}.`, action: tryAgain }
+      : state === "loading" || state === "error" || stubs.length || items.length > 0
       ? null
       : tab === "watch"
         ? watch.length === 0
@@ -877,19 +950,15 @@ export default function Launches({ initial: served, board: servedBoard, home = f
               title: "Nothing pinned yet",
               body: "Tap ☆ on any row to keep a token here. Saved in this browser.",
               action: (
-                <button type="button" className={styles.ghostBtn} onClick={() => pickTab("hot")}>
-                  See trending
+                <button type="button" className={styles.ghostBtn} onClick={() => pickTab("new")}>
+                  See new launches
                 </button>
               ),
             }
           : {
               title: "Pinned tokens didn't load",
-              body: "The directory isn't answering. Retrying by itself.",
-              action: (
-                <button type="button" className={styles.ghostBtn} onClick={() => void load(tab, query, null)}>
-                  Retry now
-                </button>
-              ),
+              body: "The directory returned none of them.",
+              action: tryAgain,
             }
         : prefix || query
           ? {
@@ -905,86 +974,58 @@ export default function Launches({ initial: served, board: servedBoard, home = f
               title: "This list is empty right now",
               body: "Launches show up here as they happen.",
               action:
-                tab === "hot" ? null : (
-                  <button type="button" className={styles.ghostBtn} onClick={() => pickTab("hot")}>
-                    See trending
+                tab === "new" ? null : (
+                  <button type="button" className={styles.ghostBtn} onClick={() => pickTab("new")}>
+                    See new launches
                   </button>
                 ),
             };
 
   // one quiet status for every failure on this screen: it sits in the toolbar, the rows keep their place
   const status =
-    conn === "limited" ? (
-      <span className={styles.status} role="status" title="Too many requests. Retrying by itself.">
-        Rate-limited · retrying
-      </span>
-    ) : conn === "retry" ? (
-      <span className={styles.status} role="status" title="The directory isn't answering.">
-        Retrying…
-        <button type="button" className={styles.inlineBtn} onClick={() => void load(tab, query, null, items.length > 0)}>
-          Retry now
-        </button>
-      </span>
+    down ? (
+      // no rows: the empty state says it; rows on screen: here, over them
+      items.length === 0 && !stubs.length ? null : (
+        <span className={styles.status} role="status" style={{ whiteSpace: "normal" }}>
+          Can&apos;t load launches right now.{lastTry !== null && ` Last try ${hhmm(lastTry)}.`}
+          <button type="button" className={styles.inlineBtn} onClick={refresh}>
+            Try again
+          </button>
+        </span>
+      )
+    ) : conn === "limited" || conn === "retry" ? (
+      // tries are left: it asks again by itself. No rows: the skeleton says "loading"; rows on screen: they are old
+      items.length === 0 ? null : (
+        <span className={styles.status} role="status" title="The list isn't answering. Asking again by itself.">
+          Stale
+        </span>
+      )
     ) : v6 === "error" && tab !== "watch" ? (
       <span className={styles.statusQuiet} role="status" title="Taxed v6 launches may be missing from this list.">
         Partial list
       </span>
     ) : null;
 
-  // a signal chip (spec §1.6): a small square in the tone, plain text, no box
-  type ChipT = ReturnType<typeof chipsFor>[number];
-  const chip = (x: ChipT) => (
-    <span key={x.text} className={styles.chip} title={x.title}>
-      <i className={styles[`sq_${x.tone}`]} aria-hidden />
-      <span className={styles.chipText}>{x.text}</span>
-    </span>
-  );
-  const chipList = (chips: ChipT[]) => (chips.length > 0 ? <span className={styles.chips}>{chip(chips[0])}</span> : null);
-
-  // the Grade cell: a Line Health letter and the worst flag; unknown is a dash with its reason, never a grade
-  const sigCell = (c: Card) => {
-    const e: SigEntry | undefined = sig.get(c.token);
-    const dash = (title: string, chips: ChipT[] = []) => (
-      <span key="dash" className={`${styles.sig} ${styles.sigIn}`} title={title}>
-        <b className={`${styles.gr} ${styles.grNone}`} aria-label={title}>—</b>
-        {chipList(chips)}
-      </span>
-    );
-    if (c.v6) return dash("No Line Health for taxed v6 launches: not a v1 curve.", chipsFor(c, null));
-    if (!sigWindow.has(c.token) && (e === undefined || e === "loading")) return dash(`Grades load for the first ${sigMax} rows on screen.`);
-    if (e === undefined || e === "loading")
+  // the Price cell: the line (24 h, or since launch for a younger token) and its % from the first to the last trade.
+  // Under 2 trades there is no line yet: a quiet "new". Unknown is a dash, never a flat line.
+  const priceCell = (c: Card, sp: SparkData | null | undefined, chg: number | null, chgCls: string) => {
+    if (sp && sp.x.length && sp.trades !== undefined && sp.trades < 2)
       return (
-        <span key="load" className={styles.sig} aria-label="Loading the grade">
-          <span className={`${styles.gBar} ${styles.grLoad}`} />
+        <span className={styles.pNew} title="Too few trades for a price line yet">
+          new
         </span>
       );
-    if (e === "error") return dash("The grade didn't load. Retrying.");
-    if (e.status === "unknown") return dash("Couldn't read this line on the chain right now: unknown, not clean. Retrying.");
-    if (e.status === "not_v1") return dash("Not a vibe/vibe v1 launch: no Line Health.");
-    const chips = chipsFor(c, e);
-    if (e.status === "early" || !e.grade) {
-      const why = `Too early to grade: only ${e.firstBuyers ?? 0} ${e.firstBuyers === 1 ? "buyer" : "buyers"} so far, the front of the line isn't formed yet.`;
-      return (
-        <span key="early" className={`${styles.sig} ${styles.sigIn}`} title={why}>
-          <b className={styles.grEarly} aria-label={why}>new</b>
-          {chipList(chips)}
-        </span>
-      );
-    }
-    const title = sigTitle(e);
-    // a C-F letter never stands alone: with no flag chip, the worst reason of the check speaks for it
-    if (!chips.length && gradeTone(e.grade) !== "good") {
-      const r = e.reasons.find((x) => x.severity === "high" || x.severity === "medium" || x.severity === "low");
-      if (r) chips.push({ text: r.label, tone: r.severity === "high" ? "bad" : "warn", title: r.label });
-    }
+    const span = sp?.life ? "since launch" : period === "1h" ? "over the last hour" : "over 24 h";
     return (
-      <span key="ok" className={`${styles.sig} ${styles.sigIn}`} title={title}>
-        <b className={`${styles.gr} ${styles[`grade_${gradeTone(e.grade)}`]} ${e.partial ? styles.grPartial : ""}`} aria-label={`Grade ${e.grade}${e.partial ? ", partial" : ""}`}>
-          {e.grade}
-          {e.partial ? "*" : ""}
-        </b>
-        {chipList(chips)}
-      </span>
+      <>
+        <Sparkline className={styles.spark} data={sp} period={period} />
+        <span
+          className={`${styles.chg} ${sp === undefined ? styles.chgWait : chgCls}`}
+          title={sp === undefined ? undefined : chg === null ? (sp === null ? "Price unknown right now, not zero." : `No trades in the last ${period === "1h" ? "hour" : "24 h"}.`) : `Price ${span}, first to last trade`}
+        >
+          {sp === undefined ? "" : chg === null ? "—" : chgText(chg)}
+        </span>
+      </>
     );
   };
 
@@ -1019,19 +1060,20 @@ export default function Launches({ initial: served, board: servedBoard, home = f
   return (
     <div className={styles.root}>
       {home ? (
-        <Heading id="board" className={styles.sr}>
-          Live launches
+        // "/" already has its title line and search above: the board's own heading is for screen readers only
+        <Heading id="board" className="srOnly">
+          All launches
         </Heading>
       ) : (
         <div className={styles.ph}>
           <Heading id="board" className={styles.title}>
             Live launches
           </Heading>
-          <p className={styles.lead}>Every vibe/vibe launch, live: the grade of the first buyers, time to graduation, volume. Signals, not verdicts.</p>
+          <p className={styles.lead}>Every vibe/vibe launch, live: price, time to graduation, volume.</p>
         </div>
       )}
 
-      {/* one toolbar: the list (tabs) on the left; status, Sort, How to read and Refresh on the right */}
+      {/* one toolbar: the list (tabs) on the left; status, Sort and Refresh on the right */}
       <div className={styles.bar}>
         <div className={`${styles.tabs} fadeX`} role="tablist" aria-label="List" ref={tabsRef} onKeyDown={onTabKey}>
           {TABS.map((t) => (
@@ -1070,9 +1112,6 @@ export default function Launches({ initial: served, board: servedBoard, home = f
         <div className={styles.tools}>
           {status}
           {sortSelect}
-          <button type="button" className={`${styles.ghostBtn} ${styles.howBtn}`} popoverTarget={HOW_ID}>
-            How to read
-          </button>
           <button
             type="button"
             className={`${styles.refresh} ${manualBusy ? styles.refreshOn : ""}`}
@@ -1090,11 +1129,10 @@ export default function Launches({ initial: served, board: servedBoard, home = f
         </div>
       </div>
 
-      {/* only when there is something to say: the search in force, launches held behind the pill, a slow first load */}
-      {((query && tab !== "watch") || (tab === "new" && pending.length > 0 && state !== "loading") || (isLoading && state === "error")) && (
+      {/* only when there is something to say: the search in force, launches held behind the pill */}
+      {((query && tab !== "watch") || (tab === "new" && pending.length > 0 && state !== "loading")) && (
         <p className={styles.sum} aria-live="polite">
-          {isLoading && state === "error" && <span>The list isn&apos;t answering yet. Retrying…</span>}
-          {query && tab !== "watch" && (
+          {query && (
             <span className={styles.qpill}>
               {prefix ? "Address starts with" : "Search"} <b>“{query}”</b>
               <button type="button" onClick={clearQuery} aria-label="Clear search" title="Clear search">
@@ -1116,7 +1154,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
         className={`${styles.board} ${swapping ? styles.fresh : ""} ${tab === "new" ? styles.tabNew : ""}`}
         role="table"
         aria-label="Live launches"
-        aria-busy={state === "loading" || busy || (state === "error" && items.length === 0)}
+        aria-busy={isLoading || busy}
         onPointerEnter={(e) => {
           if (e.pointerType === "mouse") hovering.current = true;
         }}
@@ -1129,21 +1167,20 @@ export default function Launches({ initial: served, board: servedBoard, home = f
         <div ref={headRef} className={`${styles.row} ${styles.head}`} role="row" hidden={!!empty}>
           {th("rank", "#", styles.cRank)}
           <div role="columnheader" className={`${styles.th} ${styles.cTok}`}>Token</div>
-          {th("sig", "Grade", styles.cSig, { term: <Term id="health" icon /> })}
+          {th("chg", "Price", styles.cSpark)}
           {th("door", "To grad", styles.cDoor, { term: <Term id="to-grad" icon /> })}
           {th("holders", "Holders", styles.cIn)}
           {th("vol", "Vol", styles.cVol, {
             extra: (
-              <span className={styles.seg} role="group" aria-label="Volume period">
+              <span className={styles.seg} role="group" aria-label="Period: price line and volume">
                 {(["1h", "24h"] as Period[]).map((p) => (
-                  <button key={p} type="button" aria-pressed={period === p} onClick={() => setPeriod(p)} title={`Volume over the last ${p}`}>
+                  <button key={p} type="button" aria-pressed={period === p} onClick={() => setPeriod(p)} title={`Price line and volume over the last ${p}`}>
                     {p}
                   </button>
                 ))}
               </span>
             ),
           })}
-          {th("chg", "24h", styles.cSpark)}
           {th("buys", "B/S 1h", styles.cBs, { term: <Term id="b-s" icon /> })}
           <div role="columnheader" className={styles.cStar}>
             <span className={styles.sr}>Pin</span>
@@ -1187,7 +1224,19 @@ export default function Launches({ initial: served, board: servedBoard, home = f
                 );
               meta.push(<span key="name">{c.name}</span>);
               if (tab !== "new" && ageTxt) meta.push(<span key="age">{ageTxt}</span>);
-              if (early) meta.push(<span key="early" className={early.hot ? styles.hiGood : undefined}>{early.text}</span>);
+              const sp = spark.get(c.token);
+              // a v6 row under an hour old: its B/S 1h column already says the same thing
+              const earlyDup = !!c.v6 && sp?.buys1h !== undefined && ageS !== null && ageS < 3_600;
+              if (early && !earlyDup) meta.push(<span key="early" className={early.hot ? styles.hiGood : undefined}>{early.text}</span>);
+              const sr = graded.get(c.token.toLowerCase());
+              // the screener's worst reason leads the meta line; the old v1 signal grade only when not screened
+              const worst = sr?.reasons.find((x) => x.level !== "good");
+              if (worst)
+                meta.splice(tab === "new" && ageTxt ? 1 : 0, 0,
+                  <span key="worst" className={worst.level === "bad" ? styles.hiBad : styles.hiWarn}>
+                    {worst.text}
+                  </span>,
+                );
               if (devN >= 2)
                 meta.push(
                   <span key="dev" className={styles.hi} title={`This creator (${shortAddr(c.creator)}) launched ${devN} tokens on this list.`}>
@@ -1202,12 +1251,13 @@ export default function Launches({ initial: served, board: servedBoard, home = f
                 );
               if (c.v6)
                 meta.push(
-                  <span key="tax" className={styles.hi} title={`Taxed v6 launch: ${taxText(c.v6.taxBps)} on every trade, paired with ${c.v6.pair}. Line ranked by bag.`}>
+                  <span key="tax" className={styles.hi} title={`Taxed v6 launch: ${c.v6.taxBps === null ? "tax unknown" : `${taxText(c.v6.taxBps)} on every trade`}, paired with ${c.v6.pair}. Line ranked by bag.`}>
                     {taxText(c.v6.taxBps)}
                     {c.v6.pair !== "ETH" ? ` · ${c.v6.pair} pair` : ""}
                   </span>,
                 );
-              const chg = c.change1hBps;
+              const spv = sparkFor(sp, period);
+              const chg = sparkChg(spv);
               const chgCls = chg === null || flatBps(chg) ? styles.unk : chg > 0 ? styles.up : styles.down;
               return (
                 <div
@@ -1229,6 +1279,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
                       onFocus={() => warm(c, pre)}
                       aria-label={`${title}, ${c.name}: open the token page${c.v6 ? " (taxed v6 launch, ranked by bag)" : ""}${since ? `. ${since}` : ""}`}
                     >
+                      <GradeBadge grade={sr?.grade ?? null} size="sm" title={sr?.grade ? `Grade ${sr.grade}: ${sr.reasons.map((x) => x.text).join(" · ") || "no flags"}` : VERDICT_LABEL.unknown} />
                       <span className={styles.logo}>
                         <TokenAvatar src={c.image} symbol={c.symbol} size={28} /* lazy: an eager logo becomes a <link rel=preload> on every page that prefetched "/" */ />
                       </span>
@@ -1264,8 +1315,8 @@ export default function Launches({ initial: served, board: servedBoard, home = f
                       </span>
                     </Link>
                   </div>
-                  <div role="cell" className={styles.cSig}>
-                    {sigCell(c)}
+                  <div role="cell" className={styles.cSpark}>
+                    {priceCell(c, spv, chg, chgCls)}
                   </div>
                   <div role="cell" className={styles.cDoor}>
                     {c.graduated ? (
@@ -1304,18 +1355,6 @@ export default function Launches({ initial: served, board: servedBoard, home = f
                   >
                     {eth(vol)}
                   </div>
-                  <div role="cell" className={styles.cSpark}>
-                    {c.v6 ? (
-                      <span className={`${styles.noSpark} ${styles.unk}`} role="img" aria-label="No 24 h price chart for taxed v6 launches" title="No 24 h price chart for taxed v6 launches">
-                        —
-                      </span>
-                    ) : (
-                      <Sparkline className={styles.spark} data={spark.has(c.token) ? spark.get(c.token) : undefined} />
-                    )}
-                    <span className={`${styles.chg} ${chgCls}`} title={chg === null ? "No 1h price change for this launch: unknown, not zero." : "Price change over the last hour"}>
-                      {chg === null ? "—" : chgText(chg)}
-                    </span>
-                  </div>
                   <div role="cell" className={`${styles.num} ${styles.cBs}`}>
                     {c.buys1h === null && c.sells1h === null ? (
                       <span className={styles.unk} title="No 1h window for this launch: unknown, not zero.">—</span>
@@ -1330,21 +1369,19 @@ export default function Launches({ initial: served, board: servedBoard, home = f
                   </div>
                   {/* phones: holders, volume and B/S as one plain line under the progress */}
                   <div role="cell" className={styles.cMob} aria-hidden>
-                    <span>{nf(c.holders)} holders</span>
-                    <span className={styles.sep}> · </span>
-                    <span>{eth(vol)} ETH {period}</span>
+                    <span>{nf(c.holders)} {c.holders === 1 ? "holder" : "holders"}</span>
+                    {vol !== null && (
+                      <>
+                        <span className={styles.sep}> · </span>
+                        <span>{eth(vol)} ETH {period}</span>
+                      </>
+                    )}
                     {c.buys1h !== null || c.sells1h !== null ? (
                       <>
                         <span className={styles.sep}> · </span>
                         <span>
                           {c.buys1h ?? "—"}/{c.sells1h ?? "—"} 1h
                         </span>
-                      </>
-                    ) : null}
-                    {chg !== null && !flatBps(chg) ? (
-                      <>
-                        <span className={styles.sep}> · </span>
-                        <span className={chgCls}>{chgText(chg)}</span>
                       </>
                     ) : null}
                   </div>
@@ -1373,7 +1410,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
             <div role="cell" className={styles.cTok}>
               <span className={styles.names}>
                 <b className={styles.addr}>{shortAddr(t)}</b>
-                <small className={styles.meta}>Didn&apos;t load. Retrying.</small>
+                <small className={styles.meta}>Didn&apos;t load.</small>
               </span>
             </div>
             <div role="cell" className={styles.cStar}>
@@ -1400,37 +1437,8 @@ export default function Launches({ initial: served, board: servedBoard, home = f
           </button>
         </div>
       )}
-      <p className={styles.fine}>
-        Signals, not verdicts · Sources and freshness: <Link href="/status">Status</Link>
-        {sortedNote ? " · Sorted within the loaded rows" : ""}
-      </p>
+      {sortedNote && <p className={styles.fine}>Sorted within the loaded rows</p>}
 
-      {/* How to read: the legend (and the keys on a keyboard) in one popover */}
-      <div id={HOW_ID} popover="auto" className={styles.how} aria-label="How to read the board">
-        <div className={styles.howHead}>
-          <h3>How to read</h3>
-          <button type="button" className={styles.ghostBtn} popoverTarget={HOW_ID} popoverTargetAction="hide" aria-label="Close">
-            ×
-          </button>
-        </div>
-        <dl className={styles.legendList}>
-          <div><dt>Grade</dt><dd>Line Health A–F: a check of the first 20 buyers and the dev, with the worst flag beside it. new = too early to grade. — = unknown, never clean. * = partial.</dd></div>
-          <div><dt>To grad</dt><dd>Progress of the bonding curve to 5 ETH, where trading moves to a Uniswap V4 pool. Under it, the ETA at the slower pace (24 h or the last hour). Stalled = no buys this hour; slow = buys, but net inflow is flat.</dd></div>
-          <div><dt>Holders</dt><dd>Wallets holding the token now.</dd></div>
-          <div><dt>Vol</dt><dd>ETH traded in the last 1 h or 24 h (switch in the column head).</dd></div>
-          <div><dt>24h</dt><dd>The 24 h price line, and the price change over the last hour.</dd></div>
-          <div><dt>B/S 1h</dt><dd>Buys and sells in the last hour.</dd></div>
-          <div><dt>Under the ticker</dt><dd>dev ×N = same creator N times on this list · clone = an older token already uses this ticker{v6 === "ok" ? " · % tax = a taxed v6 launch, ranked by bag" : ""}.</dd></div>
-          <div><dt>☆</dt><dd>Pin a token to your Watchlist (this browser only).</dd></div>
-        </dl>
-        <dl className={`${styles.keyList} ${styles.keysOnly}`}>
-          <div><dt><kbd>j</kbd> <kbd>k</kbd></dt><dd>Next / previous row</dd></div>
-          <div><dt><kbd>Enter</kbd> <kbd>o</kbd></dt><dd>Open the token</dd></div>
-          <div><dt><kbd>p</kbd></dt><dd>Pin / unpin the row</dd></div>
-          <div><dt><kbd>1</kbd>–<kbd>5</kbd></dt><dd>Switch list</dd></div>
-          <div><dt><kbd>?</kbd></dt><dd>This panel</dd></div>
-        </dl>
-      </div>
     </div>
   );
 }

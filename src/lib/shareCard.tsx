@@ -1,5 +1,5 @@
-// Share cards: the 1200x630 PNGs behind /line/<t>, /w/<a> and /dev/<a> links (og:image + "Download card PNG").
-// One look for all three: EXIT wordmark, who it is, one big thing (grade / PnL / launches), 4 facts in words.
+// Share cards: the 1200x630 PNGs behind /line/<t> and /w/<a> links (og:image + "Download card PNG").
+// One look for both: EXIT wordmark, who it is, one big thing (grade / PnL / launches), 4 facts in words.
 // Cheap on purpose: the data comes from the engines' own caches under a short budget, the finished PNG is kept
 // in memory for 10 min (2 min when part of it was unknown), and only cache misses count against the og limit.
 // Signals, not verdicts: no money talk, unknown is drawn as "—" and never as 0.
@@ -226,7 +226,7 @@ export function CardFrame(p: {
             <div style={{ display: "flex", background: C.sign, border: `4px solid ${C.t1}`, padding: "2px 14px", fontFamily: "Pixel", fontSize: 26, color: "#fff", letterSpacing: 4 }}>EXIT</div>
             <div style={{ display: "flex", fontFamily: "Pixel", fontSize: 20, color: C.exit, letterSpacing: 3, marginLeft: 18 }}>{p.kind}</div>
           </div>
-          <div style={{ display: "flex", fontFamily: "Pixel", fontSize: 15, color: C.t3, letterSpacing: 2 }}>SIGNALS, NOT VERDICTS</div>
+          <div style={{ display: "flex", fontFamily: "Pixel", fontSize: 15, color: C.t3, letterSpacing: 2 }}>EXITLIQUID.FUN</div>
         </div>
 
         <div style={{ display: "flex", flex: 1, marginTop: 24 }}>

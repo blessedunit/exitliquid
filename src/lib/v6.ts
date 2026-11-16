@@ -8,6 +8,7 @@ import "server-only";
 import { parseAbi, type Address } from "viem";
 import { CHAIN_ID } from "./config";
 import { client } from "./chain";
+import { pairSymbol } from "./pairs";
 import type { LaunchSocials } from "./launches";
 
 const API = `https://testnet.vibevibe.fun/api/v1/chains/${CHAIN_ID}`;
@@ -15,6 +16,11 @@ const HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.
 const ADDR = /^0x[0-9a-f]{40}$/;
 const isInt = (v: unknown): v is string => typeof v === "string" && /^\d+$/.test(v);
 const num = (v: unknown) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+/** where the tax goes; a part vibe didn't report makes the whole split unknown (never "0% to holders") */
+export function taxSplitOf(w: ApiLaunch["weights"]): { cashBps: number; holdersBps: number; burnBps: number } | null {
+  const cashBps = num(w?.cashBps), holdersBps = num(w?.holdersBps), burnBps = num(w?.burnBps);
+  return cashBps === null || holdersBps === null || burnBps === null ? null : { cashBps, holdersBps, burnBps };
+}
 const big = (v: unknown) => (isInt(v) ? BigInt(v) : null);
 
 export type V6Holder = { address: string; balance: string; /** share of total supply in bps; null = supply unknown */ shareBps: number | null; isCreator: boolean };
@@ -29,7 +35,8 @@ export type V6Line = {
   description: string | null;
   socials: LaunchSocials | null;
   createdAt: number;
-  taxBps: number;
+  /** tax per trade, bps; null = vibe didn't report it (unknown, never 0) */
+  taxBps: number | null;
   /** where the tax goes, bps of the tax: cash (project), holders, burn */
   taxSplit: { cashBps: number; holdersBps: number; burnBps: number } | null;
   pair: { symbol: string; native: boolean; decimals: number | null };
@@ -124,12 +131,16 @@ function gateway(uri: unknown): string | null {
   return uri.startsWith("https://") ? uri : null;
 }
 
-type ApiLaunch = {
+export type ApiLaunch = {
   tokenAddress?: string; curveAddress?: string; launcherAddress?: string; name?: string; symbol?: string; createdAt?: string;
   content?: { image?: { uri?: string }; description?: unknown; socials?: unknown }; moderation?: { visibility?: string };
   pairCurrencyAddress?: string; pairIsNative?: boolean; pairSymbol?: string | null; targetPairUnits?: string; taxBps?: number;
   weights?: { cashBps?: number; holdersBps?: number; burnBps?: number };
   lifecycle?: string; graduated?: boolean; curve?: { pairReserveUnits?: string };
+  // read by the analytics engine (lib/analytics/v6engine): the gift list and the dev's own part of the launch buy
+  createdBlock?: string; initialNetPersonalUnits?: string;
+  gifts?: { count?: string; reservedUnits?: string; totalUnits?: string; deliveredCount?: string; deliveredUnits?: string };
+  graduation?: { blockNumber?: string; poolId?: string } | null;
 };
 type ApiMarket = {
   coverage?: { complete?: boolean };
@@ -142,20 +153,23 @@ type ApiMarket = {
   };
 };
 
-const erc20 = parseAbi(["function totalSupply() view returns (uint256)", "function decimals() view returns (uint8)"]);
+const erc20 = parseAbi(["function totalSupply() view returns (uint256)", "function decimals() view returns (uint8)", "function symbol() view returns (string)"]);
 
 /** totalSupply of the token and the pair's decimals (18 for native ETH). Unknown pieces are null. */
-async function chainFacts(token: string, pair: string | null, native: boolean): Promise<{ supply: bigint | null; decimals: number | null }> {
+async function chainFacts(token: string, pair: string | null, native: boolean): Promise<{ supply: bigint | null; decimals: number | null; symbol: string | null }> {
   return memoized(`v6chain:${token}`, 10 * 60_000, async () => {
     const calls = [{ address: token as Address, abi: erc20, functionName: "totalSupply" as const }];
-    const pairCall = !native && pair && ADDR.test(pair) ? [{ address: pair as Address, abi: erc20, functionName: "decimals" as const }] : [];
+    const pairCall = !native && pair && ADDR.test(pair)
+      ? [{ address: pair as Address, abi: erc20, functionName: "decimals" as const }, { address: pair as Address, abi: erc20, functionName: "symbol" as const }]
+      : [];
     try {
       const r = await client.multicall({ contracts: [...calls, ...pairCall], allowFailure: true });
       const supply = r[0]?.status === "success" ? (r[0].result as bigint) : null;
       const decimals = native ? 18 : r[1]?.status === "success" ? Number(r[1].result) : null;
-      return { supply: supply && supply > 0n ? supply : null, decimals };
+      const sym = !native && r[2]?.status === "success" ? String(r[2].result).replace(/[^\w.$-]/g, "").slice(0, 12) || null : null;
+      return { supply: supply && supply > 0n ? supply : null, decimals, symbol: sym };
     } catch {
-      return { supply: null, decimals: native ? 18 : null };
+      return { supply: null, decimals: native ? 18 : null, symbol: null };
     }
   });
 }
@@ -214,9 +228,9 @@ export async function v6Line(token: string): Promise<V6Line | null> {
       tx: typeof x.transactionHash === "string" && /^0x[0-9a-fA-F]{64}$/.test(x.transactionHash) ? x.transactionHash : "",
     }))
     .sort((a, b) => b.at - a.at);
-  const lastPrice = d?.trades?.find((x) => isInt(x.executionPricePairUnitsPerToken))?.executionPricePairUnitsPerToken ?? null;
+  // vibe truncates the price to an integer: on a 6-decimal pair (USDG) a real price became "0" (audit 15.10). 0 = unknown.
+  const lastPrice = d?.trades?.find((x) => isInt(x.executionPricePairUnitsPerToken) && x.executionPricePairUnitsPerToken !== "0")?.executionPricePairUnitsPerToken ?? null;
   const holderCount = num(s?.holderCount);
-  const w = l.weights;
   return {
     token: t,
     curve: (l.curveAddress || "").toLowerCase(),
@@ -227,9 +241,9 @@ export async function v6Line(token: string): Promise<V6Line | null> {
     description: cleanText(l.content?.description, 280),
     socials: socialsOf(l.content?.socials),
     createdAt: Math.floor(Date.parse(l.createdAt ?? "") / 1000) || 0,
-    taxBps: Math.max(0, Number(l.taxBps ?? 0)),
-    taxSplit: w ? { cashBps: Number(w.cashBps ?? 0), holdersBps: Number(w.holdersBps ?? 0), burnBps: Number(w.burnBps ?? 0) } : null,
-    pair: { symbol: native ? "ETH" : String(l.pairSymbol || "token").slice(0, 12), native, decimals: facts.decimals },
+    taxBps: ((v) => (v === null ? null : Math.max(0, v)))(num(l.taxBps)),
+    taxSplit: taxSplitOf(l.weights),
+    pair: { symbol: native ? "ETH" : (pairSymbol(l.pairSymbol, l.pairCurrencyAddress) ?? facts.symbol ?? "token"), native, decimals: facts.decimals },
     reserve: reserve === null ? null : reserve.toString(),
     target: target === null ? null : target.toString(),
     doorBps,

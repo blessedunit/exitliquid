@@ -7,13 +7,14 @@
 // Cache: the whole answer 30 s per token (the free route adds a short CDN s-maxage); slow history parts cache
 // longer in their own modules (clones 30 min, nonces 10 min, swaps incremental, pool keys forever).
 import "server-only";
-import { buildFor, PLUMBING } from "@/lib/service";
+import { buildFor } from "@/lib/service";
+import { PLUMBING, POOL_MANAGER } from "@/lib/factories";
 import { client, loadEvents, ZERO } from "@/lib/chain";
 import { explorerBudgetShare, topHolders } from "@/lib/holders";
 import { BoundedTtlMap } from "@/lib/bounded";
 import { earlyIndex, perIndex } from "@/lib/earlyIndex";
 import { marketOf, poolSwapEth, quoteBuy, quoteSell, type MarketState } from "./market";
-import { BLOCK_SEC, book, bundle, exitMath, IMPACT_SIZES, marketLegs, POOL_MANAGER, sortRaw, supplyOf, volume, walletTags, type HolderExtra, type Leg, type Quotes } from "./compute";
+import { BLOCK_SEC, book, bundle, devSoldPct, exitMath, IMPACT_SIZES, marketLegs, sortRaw, supplyOf, volume, walletTags, type HolderExtra, type Leg, type Quotes } from "./compute";
 import { healthOf } from "./healthMemo";
 import { clonesOf } from "./clones";
 import { chipsFor } from "./chips";
@@ -29,9 +30,9 @@ const SIDE_BUDGET_MS = 4_500; // holders / clones / nonces: what isn't back by t
 const answers = new BoundedTtlMap<Analytics>(200);
 const inflight = new Map<string, Promise<Analytics>>();
 
-function labels(nowSec: number): { sniper: Set<string>; farm: Set<string> } | null {
+export function labels(nowSec: number): { sniper: Set<string>; farm: Set<string> } | null {
   if (nowSec - earlyIndex().generatedAt > INDEX_MAX_AGE) return null; // too old to lean on: unknown
-  // rebuilt only when the hourly index job writes a new index (lib/earlyIndex)
+  // rebuilt only when ops/early_index.py writes a new index (lib/earlyIndex)
   return perIndex("engine.labels", (ix) => ({
     sniper: new Set(ix.snipers.map((w) => w.toLowerCase())),
     farm: new Set(ix.farms.flatMap((f) => f.wallets.map((w) => w.toLowerCase()))),
@@ -39,11 +40,11 @@ function labels(nowSec: number): { sniper: Set<string>; farm: Set<string> } | nu
 }
 
 /** a section: short user-facing source ("chain", "chain + Blockscout", "vibe API") + the technical one for the tooltip */
-type Src = readonly [source: string, detail: string];
-const field = <T,>(data: T | null, src: Src, reason: string | null = null, at = Date.now()): Field<T> => ({ data, reason: data === null ? reason ?? "Unknown right now." : reason, source: src[0], detail: src[1], computedAt: at });
+export type Src = readonly [source: string, detail: string];
+export const field = <T,>(data: T | null, src: Src, reason: string | null = null, at = Date.now()): Field<T> => ({ data, reason: data === null ? reason ?? "Unknown right now." : reason, source: src[0], detail: src[1], computedAt: at });
 
 /** resolves with the promise, or with `fallback` after `ms` (the promise keeps running and fills its cache) */
-function within<T, F>(p: Promise<T>, ms: number, fallback: F): Promise<T | F> {
+export function within<T, F>(p: Promise<T>, ms: number, fallback: F): Promise<T | F> {
   return new Promise((resolve) => {
     const t = setTimeout(() => resolve(fallback), ms);
     p.then((v) => { clearTimeout(t); resolve(v); }, () => { clearTimeout(t); resolve(fallback); });
@@ -52,8 +53,8 @@ function within<T, F>(p: Promise<T>, ms: number, fallback: F): Promise<T | F> {
 
 /** like within(), but says WHY there is no value: the budget ran out (still running, fills its cache)
  *  or the call failed. A slow answer and a dead service get different words. */
-type Settled<T> = { ok: true; v: T } | { ok: false; timedOut: boolean };
-function settle<T>(p: Promise<T>, ms: number): Promise<Settled<T>> {
+export type Settled<T> = { ok: true; v: T } | { ok: false; timedOut: boolean };
+export function settle<T>(p: Promise<T>, ms: number): Promise<Settled<T>> {
   return new Promise((resolve) => {
     const t = setTimeout(() => resolve({ ok: false, timedOut: true }), ms);
     p.then((v) => { clearTimeout(t); resolve({ ok: true, v }); }, () => { clearTimeout(t); resolve({ ok: false, timedOut: false }); });
@@ -63,7 +64,7 @@ function settle<T>(p: Promise<T>, ms: number): Promise<Settled<T>> {
 /* ---------------- nonces (top holders): one eth_getTransactionCount each, 5 at a time, 10 min ---------------- */
 
 const nonces = new BoundedTtlMap<number>(20_000);
-async function nonceOf(wallets: string[]): Promise<Map<string, number>> {
+export async function nonceOf(wallets: string[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   const todo: string[] = [];
   for (const w of wallets) {
@@ -91,7 +92,7 @@ async function nonceOf(wallets: string[]): Promise<Map<string, number>> {
 // constant made "fresh < 24 h" cover ~26.6 h. Unknown (RPC down) = the constant, said nowhere as exact.
 let spb: { v: number; at: number } | null = null;
 let spbJob: Promise<number | null> | null = null;
-async function secPerBlock(head: number): Promise<number | null> {
+export async function secPerBlock(head: number): Promise<number | null> {
   if (spb && Date.now() - spb.at < 3_600_000) return spb.v;
   if (!spbJob) {
     spbJob = (async () => {
@@ -126,7 +127,7 @@ async function blockAt(targetSec: number, head: number, headTs: number): Promise
   }
   return b;
 }
-async function windowStarts(head: number): Promise<{ h1: number; d1: number } | null> {
+export async function windowStarts(head: number): Promise<{ h1: number; d1: number } | null> {
   const k = `${Math.floor(head / 360)}`; // ~1 min of blocks
   const h1 = starts.get(`h1:${k}`);
   const d1 = starts.get(`d1:${k}`);
@@ -326,6 +327,7 @@ async function build(token: string): Promise<Analytics> {
     : null;
   const extra: HolderExtra = { cluster, fundedBlock, checked, nonce, labels: lb, secPerBlock: spbV, dev };
   const sup = supplyOf(bk, curve, plumbing, creator, extra);
+  sup.devSoldPct = dev ? devSoldPct(legs, bk, creator, 0) : null;
   const supReasons = [
     holders ? null : holdersS.ok ? null : holdersS.timedOut ? "Funding (fresh / cluster) still loading, next refresh." : "Funding (fresh / cluster): explorer didn't answer.",
     nonce.size < people.length ? "Some nonces unknown." : null,
@@ -341,7 +343,7 @@ async function build(token: string): Promise<Analytics> {
   let health: Analytics["health"] = null;
   try {
     const h = healthOf({ token, creator, curve, raw, plumbing, complete: startKnown, headBlock: head, nowSec });
-    health = { grade: h.grade, score: h.score, partial: h.partial, high: h.high, snipers: h.counts.snipers, farm: h.counts.farm, firstBuyers: h.counts.firstBuyers };
+    health = { grade: h.grade, score: h.score, partial: h.partial, high: h.high, snipers: startKnown ? h.counts.snipers : null, farm: startKnown ? h.counts.farm : null, firstBuyers: h.counts.firstBuyers, stillHolding: h.counts.stillHolding };
   } catch { /* the strip shows "—" */ }
 
   const supplyKnown = bk.minted > 0 ? bk.minted : null;
@@ -357,6 +359,8 @@ async function build(token: string): Promise<Analytics> {
     block: head,
     computedAt: now,
     graduated: meta.graduated,
+    ageSec: startKnown && spbV ? Math.max(0, Math.round((head - createdBlock) * spbV)) : null,
+    indexWindowDays: lb ? earlyIndex().windowDays : null,
     health,
     market: marketF,
     bundle: bundleF,

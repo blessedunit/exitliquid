@@ -20,10 +20,9 @@
 .chip:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
 .actions { display: flex; align-items: center; gap: 8px; flex: none; padding-top: 4px; }
 
-.skel { display: inline-block; width: 140px; height: 32px; background: var(--s2); animation: pulse 1.2s ease-in-out infinite; vertical-align: middle; }
+.skel { display: inline-block; width: 140px; height: 32px; vertical-align: middle; }
 .skelSm { width: 120px; height: 14px; }
-@keyframes pulse { 50% { opacity: .45; } }
-@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
+
 
 /* title + an optional status beside it */
 .titleRow { display: flex; align-items: center; gap: 12px; min-width: 0; flex-wrap: wrap; }

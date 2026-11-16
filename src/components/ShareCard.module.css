@@ -25,6 +25,7 @@ details.share { position: relative; flex: 0 0 auto; }
 .err { margin: 0; padding: 8px 12px; color: var(--down); font: 400 12px/16px var(--f-ui); }
 
 @media (max-width: 760px) {
-  .menu { min-width: 220px; }
+  /* on a phone the Share button wraps to the left edge: a right-anchored menu ran off-screen (x=-132, audit 15.10) */
+  .menu { min-width: 220px; right: auto; left: 0; max-width: calc(100vw - 32px); }
   .btn { min-height: 44px; }
 }

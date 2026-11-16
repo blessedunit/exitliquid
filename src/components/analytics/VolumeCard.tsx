@@ -14,6 +14,8 @@ const LABEL: Record<VolWindow["label"], string> = { "1h": "1h", "24h": "24h", al
 
 export default function VolumeCard({ state, onSelect }: { state: AnalyticsState; onSelect?: (w: string) => void }) {
   const f = state.a?.volume;
+  // every "Eth" amount of the answer is in the pair's unit: ETH, or the pair token on a v6 launch (NVDA, USDG...)
+  const U = state.a?.unit?.symbol ?? "ETH";
   const d = f?.data;
   const day = d?.windows.find((w) => w.label === "24h") ?? d?.windows.find((w) => w.label === "all") ?? null;
   const washPct = day ? share(day.washEth, day.volumeEth) : null;
@@ -37,11 +39,11 @@ export default function VolumeCard({ state, onSelect }: { state: AnalyticsState;
         <>
           <div className={s.hero}>
             <p className={s.big}>
-              <b>{fmtEth(day.realEth)} ETH</b>
+              <b>{fmtEth(day.realEth)} {U}</b>
               <span>real volume · {LABEL[day.label]}</span>
             </p>
             <p className={s.line2}>
-              of <b>{fmtEth(day.volumeEth)} ETH</b> total · wash <b>{pct(washPct)}</b> · bots <b>{botPct === null ? "—" : pct(botPct)}</b>
+              of <b>{fmtEth(day.volumeEth)} {U}</b> total · wash <b>{pct(washPct)}</b> · bots <b>{botPct === null ? "—" : pct(botPct)}</b>
             </p>
           </div>
           {day.volumeEth > 0 && (
@@ -60,14 +62,14 @@ export default function VolumeCard({ state, onSelect }: { state: AnalyticsState;
           )}
           <div className={s.tblWrap}>
             <table className={s.tbl}>
-              <caption className="srOnly">Volume by window, ETH</caption>
+              <caption className="srOnly">Volume by window, {U}</caption>
               <thead>
                 <tr><th scope="col"><span className="srOnly">Measure</span></th>{d.windows.map((w) => <th key={w.label} scope="col" className={hide(w)}>{LABEL[w.label]}</th>)}</tr>
               </thead>
               <tbody>
                 <Row name="Volume" ws={d.windows} hide={hide} v={(w) => `${fmtEth(w.volumeEth)}`} />
                 <Row name="Real" ws={d.windows} hide={hide} v={(w) => `${fmtEth(w.realEth)}`} cls={s.up} hint="Volume without wash and without known-bot trades" />
-                <Row name="Wash" ws={d.windows} hide={hide} v={(w) => (w.washEth ? fmtEth(w.washEth) : "0")} hint="Dust trades under 0.0001 ETH plus in-and-out by one wallet within 2 blocks" />
+                <Row name="Wash" ws={d.windows} hide={hide} v={(w) => (w.washEth ? fmtEth(w.washEth) : "0")} hint={`${d.dust == null ? "In-and-out" : `Dust trades under ${d.dust} ${U} plus in-and-out`} by one wallet within 2 blocks`} />
                 <Row name="Buys / sells" ws={d.windows} hide={hide} v={(w) => `${fmtInt(w.buys)} / ${fmtInt(w.sells)}`} />
                 <Row name="Buyers" ws={d.windows} hide={hide} v={(w) => fmtInt(w.buyers)} />
                 <Row name="Buys per buyer" ws={d.windows} hide={hide} v={(w) => (w.buysPerBuyer === null ? "—" : w.buysPerBuyer.toFixed(2))} hint="Many buys per wallet = a few wallets making the activity" />
@@ -89,7 +91,7 @@ export default function VolumeCard({ state, onSelect }: { state: AnalyticsState;
                       <Addr wallet={t.wallet} onSelect={onSelect}>{shortAddr(t.wallet)}</Addr>
                       {t.tag && <Tag tone={t.tag === "sniper" ? "bad" : "warn"}>{t.tag === "sniper" ? "Sniper" : t.tag === "farm" ? "Farm" : t.tag}</Tag>}
                     </span>
-                    <span className={s.right}>{fmtEth(t.eth)} ETH <span className={s.rank}>{pct(t.sharePct)} · {t.trades}×</span></span>
+                    <span className={s.right}>{fmtEth(t.eth)} {U} <span className={s.rank}>{pct(t.sharePct)} · {t.trades}×</span></span>
                   </li>
                 ))}
               </ol>

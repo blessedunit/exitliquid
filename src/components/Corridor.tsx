@@ -6,6 +6,7 @@ import styles from "./Corridor.module.css";
 import type { WireEntry } from "@/lib/types";
 import { short } from "@/lib/queue";
 import { SPRITES, spriteSrc, type Skin } from "@/lib/skins";
+import type { Mark } from "./token/Report";
 
 type Props = {
   line: WireEntry[];
@@ -29,6 +30,10 @@ type Props = {
   /** visible width in SVG units (340 units = the box height). Set it and the corridor is drawn
    *  edge to edge, extending left of the door, instead of a fixed 1200-unit picture. */
   span?: number;
+  /** marks over the head (known sniper, farm wallet, bundled buy), keyed by lower-case wallet */
+  marks?: ReadonlyMap<string, Mark>;
+  /** first buyers who sold everything, drawn faded at their buy-order spot (not in the line: no place) */
+  gone?: ReadonlySet<string>;
 };
 
 function subscribe(cb: () => void) {
@@ -88,13 +93,14 @@ export default function Corridor({
   showWallets = false,
   event,
   height = 300,
-  ghosts = 0, // ghost beyond the door is off for now
   compact = false,
   showRest = true,
   scene = "door",
   status = "ok",
   doorLabel = true,
   span,
+  marks,
+  gone,
 }: Props) {
   const W = VIEW_W;
   const H = VIEW_H;
@@ -143,6 +149,7 @@ export default function Corridor({
   const lineOffset = (shown[0]?.isCreator ? step : 0) + arrivalOffset;
   const entranceX = entranceAtRest + lineOffset;
   const selectedIndex = selected ? shown.findIndex((entry) => entry.wallet === selected) : -1;
+  const selectedGone = !!selected && !!gone?.has(selected);
   const open = Math.max(0, Math.min(1, progressBps / 10000));
   const leafW = Math.round(doorW - 12 - (doorW - 30) * open); // door leaf shrinks as it opens
   const rest = Math.max(0, inLine - shown.length);
@@ -200,11 +207,13 @@ export default function Corridor({
           <rect x={doorX + 6 + leafW - 4} y={top + 6} width={4} height={doorH - 6} fill="#0b1f14" />
           <rect x={doorX + leafW - 12} y={floor - doorH * 0.48} width={8} height={8} fill="var(--text)" />
           {/* EXIT sign */}
+          <g>
           <rect x={doorX - 14} y={top - 58} width={doorW + 28} height={40} fill="var(--text)" />
           <rect x={doorX - 10} y={top - 54} width={doorW + 20} height={32} fill="var(--exit-sign)" />
           <text x={doorX + doorW / 2} y={top - 30} textAnchor="middle" fontSize="22" fill="#fff" fontFamily="var(--font-pixel)" fontWeight="700" letterSpacing="3">
             EXIT
           </text>
+          </g>
         </g>
         {doorLabel && <text x={doorX + doorW / 2} y={floor + (narrow ? 44 : 39)} textAnchor="middle" fontSize={narrow ? 18 : 14} fill="var(--muted)" fontFamily="var(--font-mono)" letterSpacing="1">
           {status !== "ok" ? (narrow ? "?% OPEN" : "DOOR ?% OPEN") : narrow ? `${pct}% OPEN` : `DOOR ${pct}% OPEN`}
@@ -223,23 +232,16 @@ export default function Corridor({
           <text x="93" y={floor - 49} textAnchor="middle" fontSize="37" fill="var(--exit)" fontFamily="var(--font-mono)" fontWeight="800">→</text>
         </g>}
 
-        {/* ghosts that already left */}
-        {scene === "door" && ghosts > 0 && (
-          <g className={styles.ghost}>
-            <Trader skin="ghost" cx={doorX + doorW + 36} floor={floor - 8} opacity={0.55} px={1.2} />
-          </g>
-        )}
 
         {scene === "door" && event?.kind === "exit" && (
           <g key={event.key} className={styles.exitEvent}>
-            <Trader skin="ghost" cx={doorX + 52} floor={floor - 8} opacity={0.7} px={1.25} />
             {[0, 1, 2, 3, 4, 5].map((n) => (
               <rect key={n} x={doorX + 18 - n * 8} y={floor - 72 + (n % 3) * 9} width="5" height="5" fill="var(--exit)" className={styles.pointBit} style={{ animationDelay: `${n * 0.08}s` }} />
             ))}
           </g>
         )}
 
-        {selectedIndex >= 0 && selectedIndex < shown.length - 1 && (
+        {selectedIndex >= 0 && selectedIndex < shown.length - 1 && !selectedGone && (
           <g className={styles.liquidityMark}>
             <path
               d={`M${front - (shown.length - 1) * step + lineOffset - 24} 34v-8H${front - (selectedIndex + 1) * step + lineOffset + 24}v8`}
@@ -278,13 +280,32 @@ export default function Corridor({
           const label = `${e.wallet.slice(0, 5)}…${e.wallet.slice(-3)}`;
           const labelY = floor - h - 34;
           const showLabel = !e.isCreator && !hl && showWallets;
+          const ghost = !!gone?.has(e.wallet);
+          const mk = marks?.get(e.wallet);
+          const mkList = mk ? ([mk.sn && "sn", mk.fa && "fa", mk.bu && "bu"].filter(Boolean) as ("sn" | "fa" | "bu")[]) : [];
+          const MK = 12, MG = 4;
+          const mkX = cx - (mkList.length * MK + (mkList.length - 1) * MG) / 2;
+          const what = [mk?.sn && "known sniper", mk?.fa && "farm wallet", mk?.bu && "bundled buy", ghost && "sold everything"].filter(Boolean).join(", ");
           const trader = (
             <g
-              className={`${styles.person} ${picked ? styles.selected : ""} ${behindPicked ? styles.behind : ""} ${aheadPicked ? styles.ahead : ""} ${e.isCreator ? styles.dev : ""} ${eventClass}`}
+              className={`${styles.person} ${ghost ? styles.ghostP : ""} ${picked ? styles.selected : ""} ${behindPicked ? styles.behind : ""} ${aheadPicked ? styles.ahead : ""} ${e.isCreator ? styles.dev : ""} ${eventClass}`}
               style={{ animationDelay: `${(i % 5) * 0.17}s` }}
             >
-                <title>{`#${e.place} · ${short(e.wallet)} · ${e.lp} pts`}</title>
+                <title>{`${ghost ? "first buyer" : `#${e.place}`} · ${short(e.wallet)}${what ? ` · ${what}` : ""}`}</title>
                 <Trader skin={artSkin} cx={cx} floor={floor} px={artPx} face={e.isCreator ? "left" : "right"} />
+                {mkList.map((k, n) => (
+                  <rect
+                    key={k}
+                    x={mkX + n * (MK + MG) + (k === "bu" ? 1.5 : 0)}
+                    y={floor - h - 18 + (k === "bu" ? 1.5 : 0)}
+                    width={k === "bu" ? MK - 3 : MK}
+                    height={k === "bu" ? MK - 3 : MK}
+                    fill={k === "sn" ? "var(--down)" : k === "fa" ? "var(--t1, #e8ece9)" : "none"}
+                    stroke={k === "bu" ? "var(--warn, #e09a4f)" : undefined}
+                    strokeWidth={k === "bu" ? 3 : undefined}
+                    className={styles.mark}
+                  />
+                ))}
                 {showLabel && (
                   <g className={styles.walletLabel}>
                     <path d={`M${cx} ${labelY + 21}V${floor - h - 5}`} stroke="var(--exit)" strokeWidth="2" opacity="0.7" />
@@ -313,7 +334,7 @@ export default function Corridor({
               className={styles.personButton}
               role="button"
               tabIndex={0}
-              aria-label={`Open ticket for #${e.place} ${e.wallet}`}
+              aria-label={`Open ticket for ${ghost ? "first buyer" : `#${e.place}`} ${e.wallet}${what ? `, ${what}` : ""}`}
               onClick={() => onSelect(e)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
@@ -339,7 +360,8 @@ export default function Corridor({
           </text>
         )}
         {/* unknown: an empty door, no text (the page shows one "Reconnecting" plate) */}
-        {(inLine === 0 || status === "loading") && status !== "unknown" && shown.length === 0 && (
+        {/* loading: the page draws waiting shadows and the verdict says "Reading the chain…" once: no text here */}
+        {inLine === 0 && status === "ok" && shown.length === 0 && (
           <text
             x={doorX - 60}
             y={floor - 70}
@@ -349,7 +371,7 @@ export default function Corridor({
             fontFamily="var(--font-pixel)"
             fontWeight="700"
           >
-            {status === "loading" ? "READING THE CHAIN..." : narrow ? "EMPTY. FOR NOW." : "THE LINE IS EMPTY. FOR NOW."}
+            {narrow ? "EMPTY. FOR NOW." : "THE LINE IS EMPTY. FOR NOW."}
           </text>
         )}
       </svg>

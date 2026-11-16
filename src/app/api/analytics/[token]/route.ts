@@ -1,4 +1,5 @@
 import { analyticsFor, NotVibeError } from "@/lib/analytics/engine";
+import { analyticsV6, isKnownV6 } from "@/lib/analytics/v6engine";
 import { isAddress } from "@/lib/ticket";
 import { clientIp, LIMITS, rateLimit, tooMany } from "@/lib/limits";
 
@@ -17,7 +18,14 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
   if (!isAddress(rawToken)) return Response.json({ error: "bad_address" }, { status: 400, headers: { "cache-control": "no-store" } });
   if (!(await rateLimit(LIMITS.line, clientIp(req), { localOnly: true }))) return tooMany();
   try {
-    const a = await analyticsFor(rawToken.toLowerCase());
+    const t = rawToken.toLowerCase();
+    // v1 first (unchanged); a token no v1 factory launched is tried as a taxed v6 launch (16.10)
+    const a = isKnownV6(t)
+      ? await analyticsV6(t)
+      : await analyticsFor(t).catch((e) => {
+        if (e instanceof NotVibeError) return analyticsV6(t);
+        throw e;
+      });
     return Response.json(a, { headers: FREE_HEADERS });
   } catch (e) {
     const notVibe = e instanceof NotVibeError;

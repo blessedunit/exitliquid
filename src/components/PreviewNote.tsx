@@ -1,7 +1,7 @@
 "use client";
 // The "$EXIT isn't live" note. Only on the pages that show the $EXIT line, which replays another token
-// before launch (/exit, /board, /hall, /t/<wallet>); elsewhere the data is real.
-const LINE_PAGES = ["/exit", "/board", "/hall", "/t"];
+// before launch (/exit, /t/<wallet>); elsewhere the data is real.
+const LINE_PAGES = ["/exit", "/t"];
 import { usePathname } from "next/navigation";
 
 export default function PreviewNote({ className }: { className?: string }) {

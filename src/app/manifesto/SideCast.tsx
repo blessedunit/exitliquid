@@ -62,7 +62,7 @@ export default function SideCast() {
         const s = SPRITES[skin];
         const flip = (side === "left" ? "right" : "left") !== s.faces;
         // the dev ghost is drawn at a larger pixel size: keep it about as tall as the others
-        const k = skin === "doorghost" ? 0.62 : 1;
+        const k = 1;
         return (
           <div key={skin} className={`${styles.sideFig} ${side === "left" ? styles.sideLeft : styles.sideRight}`} data-sec={sec} data-at={at}>
             {/* eslint-disable-next-line @next/next/no-img-element */}

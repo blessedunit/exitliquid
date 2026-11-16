@@ -29,8 +29,6 @@ export default function Term({ id, children, icon = false, className }: Props) {
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false); // opened by tap/click: hover-out doesn't close it
   const [pos, setPos] = useState<{ left: number; top: number; up: boolean } | null>(null);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
 
   const show = useCallback((pin = false) => {
     if (hideT.current) clearTimeout(hideT.current);
@@ -144,7 +142,8 @@ export default function Term({ id, children, icon = false, className }: Props) {
       >
         {icon ? <span aria-hidden>i</span> : (children ?? e.term)}
       </span>
-      {mounted && open &&
+      {/* `open` is only ever set by a pointer / key / focus event, so the portal is never rendered on the server */}
+      {open &&
         createPortal(
           <div
             ref={pop}

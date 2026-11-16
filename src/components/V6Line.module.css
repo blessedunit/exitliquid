@@ -4,7 +4,6 @@
 .kind { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; margin: 16px 0 8px; font: 400 13px/20px var(--f-ui); color: var(--t2); }
 /* the analytics gap, in words: one quiet line */
 .gap { margin: 0 0 24px; max-width: 76ch; color: var(--t3); font: 400 13px/20px var(--f-ui); }
-.tag { color: var(--t1); font: 500 13px/20px var(--f-ui); }
 .taxChip { color: var(--t1); font: 400 13px/20px var(--f-num); }
 .sep { color: var(--t3); }
 .muted { color: var(--t3); }
@@ -27,10 +26,45 @@
 .crowd { position: absolute; left: 0; right: 112px; bottom: 30px; display: flex; flex-direction: row-reverse; align-items: flex-end; gap: 14px; padding-right: 10px; overflow: hidden; height: 180px; }
 .person { position: relative; flex: none; display: flex; flex-direction: column; align-items: center; animation: idle .9s steps(1) infinite; }
 .person img { display: block; }
-/* no glow around the front person (no outline around characters) */
+/* no glow around the front person (operator 30.09: no green outline around characters) */
 .label { position: absolute; bottom: calc(100% + 4px); display: grid; justify-items: center; gap: 2px; padding: 3px 5px; background: #050a07; border: 1px solid #41614a; color: var(--t2); font: 700 9px/1 var(--f-num); letter-spacing: .04em; white-space: nowrap; }
 .label b { color: var(--t1); font-weight: 600; }
 .front .label { border-color: var(--exit); }
+/* each person is a button: pointer, a lit label on hover/focus, the picked one in solid green */
+button.person { padding: 0; margin: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+.person img { transition: filter .12s; }
+.person:hover img, .person:focus-visible img { filter: brightness(1.25); }
+.person:hover .label, .person:focus-visible .label { border-color: var(--exit); color: var(--t1); }
+.person:focus-visible { outline: 2px solid var(--exit); outline-offset: 3px; }
+.picked .label { background: var(--exit); border-color: var(--exit); color: var(--exit-ink); }
+.picked .label b { color: var(--exit-ink); }
+.picked img { filter: brightness(1.2); }
+.behind .label { border-color: rgba(61, 220, 132, .55); }
+/* the "map": a bracket over everyone behind the picked person */
+.bracket { position: absolute; top: 24px; height: 10px; border: 2px solid var(--exit); border-bottom: 0; pointer-events: none; }
+.bracket span { position: absolute; left: 50%; bottom: calc(100% - 1px); translate: -50% 0; padding: 0 6px; background: #101c17; color: var(--exit); font: 700 9px/12px var(--f-px); letter-spacing: .08em; white-space: nowrap; }
+
+/* ---------- the holder card (opens under the scene) ---------- */
+.card { margin: 12px 0 0; padding: 16px; border: 1px solid var(--line-2); background: var(--s1); }
+.cardHead { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 12px; }
+.cardHead img { display: block; }
+.who { display: grid; gap: 4px; min-width: 0; }
+.who .addr { min-height: 0; font: 500 15px/20px var(--f-num); }
+.who small { color: var(--t3); font: 400 12px/16px var(--f-ui); }
+.devChip { padding: 1px 5px; border: 1px solid var(--exit); color: var(--exit); font: 700 10px/14px var(--f-num); letter-spacing: .06em; }
+.place { display: flex; align-items: baseline; gap: 4px; font-variant-numeric: tabular-nums; }
+.place b { color: var(--exit); font: 400 26px/1 var(--f-num); }
+.place span { color: var(--t3); font: 400 13px/1 var(--f-num); }
+.close { width: 44px; height: 44px; margin: -10px -10px -10px 0; border: 0; background: none; color: var(--t2); font: 400 22px/1 var(--f-ui); cursor: pointer; }
+.close:hover { color: var(--t1); }
+.cardStats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin: 16px 0 0; padding: 14px 0 0; border-top: 1px solid var(--line); }
+.cardStats > div { display: grid; gap: 4px; min-width: 0; }
+.cardStats dt { font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; color: var(--t3); }
+.cardStats dd { margin: 0; font: 400 18px/24px var(--f-num); font-variant-numeric: tabular-nums; color: var(--t1); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lastTrade { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin: 14px 0 0; padding: 12px 0 0; border-top: 1px solid var(--line); font: 400 13px/18px var(--f-num); }
+.cardLinks { display: flex; flex-wrap: wrap; gap: 4px 20px; margin: 14px 0 0; padding: 12px 0 0; border-top: 1px solid var(--line); }
+.cardLinks a { display: inline-flex; align-items: center; min-height: 32px; color: var(--t1); font: 500 13px/18px var(--f-ui); text-decoration: none; }
+.cardLinks a:hover { color: var(--exit); }
 @keyframes idle { 50% { translate: 0 -2px; } }
 .more { flex: none; align-self: center; margin-right: 6px; font: 700 11px/1.3 var(--f-px); letter-spacing: .06em; color: var(--t2); white-space: nowrap; }
 .empty { align-self: center; margin-right: 12px; font: 700 13px/1.3 var(--f-px); letter-spacing: .06em; text-transform: uppercase; color: var(--t2); }
@@ -80,10 +114,48 @@ a.when:hover { color: var(--t1); }
   .frame { width: 60px; height: 100px; }
   .sign { width: 70px; font-size: 12px; }
   .grid { grid-template-columns: 1fr; }
+  .card { padding: 14px 12px; }
+  .cardStats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; }
+  .place b { font-size: 22px; }
   .tape li { grid-template-columns: 36px minmax(0, 1fr) auto 32px; }
   .tape li > :nth-child(4) { display: none; }
   .holders li { grid-template-columns: 32px minmax(0, 1fr) 60px 56px; }
   .holders li > .bar { display: none; }
   .tape li, .holders li { min-height: 44px; }
 }
-@media (prefers-reduced-motion: reduce) { .person { animation: none; } .frame i { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .person { animation: none; } .person img { transition: none; } .frame i { transition: none; } }
+
+/* analytics-first layout (16.10): the report sits above the line; the line is its own section */
+.tabs { margin-top: 48px; }
+.lineSec { margin-top: 56px; padding: 28px 0 0; border-top: 1px solid var(--line); scroll-margin-top: calc(var(--hdr-h) + 56px); }
+.secHead { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 16px; margin: 0 0 24px; }
+.secHead h2 { margin: 0; font: 600 20px/28px var(--f-ui); color: var(--t1); }
+.secHead p { margin: 0; color: var(--t3); font: 400 13px/20px var(--f-ui); }
+@media (max-width: 760px) {
+  .tabs { margin-top: 32px; }
+  .lineSec { margin-top: 40px; padding-top: 24px; }
+  .secHead p { flex-basis: 100%; }
+}
+
+/* Share sits at the right end of the phone action row: its menu opens leftwards so it stays on screen */
+@media (max-width: 760px) {
+  .shareRight > div { left: auto; right: 0; }
+}
+
+/* ---------- 17.11 layout: verdict, the line right under it, one row of figures, the sections, trades + holders ---------- */
+.lineTop { margin-top: 32px; min-width: 0; scroll-margin-top: calc(var(--hdr-h) + 24px); }
+.byBag { margin-left: auto; flex: none; color: var(--t3); font: 400 13px/20px var(--f-num); white-space: nowrap; }
+/* the first buyers' marks, on the plate over the head: sniper red, farm white, bundled amber outline */
+.marks { display: flex; justify-content: center; gap: 2px; height: 6px; margin-bottom: 2px; }
+.marks i { display: block; width: 6px; height: 6px; }
+.grid { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); }
+@media (max-width: 760px) {
+  .lineTop { margin-top: 24px; }
+  /* phones: every drawn person stays; the crowd pans sideways inside the scene, the door stays put */
+  .crowd { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none; }
+  .crowd::-webkit-scrollbar { display: none; }
+  .byBag { font-size: 12px; }
+  .grid { margin-top: 36px; }
+}
+section.lineTop { padding: 0; }
+@media (max-width: 760px) { .byBag { margin-left: 0; } }

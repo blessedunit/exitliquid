@@ -1,5 +1,5 @@
 // Testnet stock tokens minted by the Robinhood Chain faucet.
-// Addresses and symbol()/decimals() verified with eth_call.
+// Addresses and symbol()/decimals() verified with eth_call (research/tech.md, 23.09).
 import "server-only";
 import { erc20Abi, type Address } from "viem";
 import { client } from "./chain";

@@ -94,7 +94,7 @@ export default function DevBadge({ token, creator }: { token: string; creator: s
         <div id={panelId} className={styles.pop} role="region" aria-label="Launches by this creator">
           <div className={styles.popHead}>
             <span>Launches by</span>
-            <Link href={`/dev/${rep.creator}`} className={styles.addr} onClick={() => setOpen(false)} title="Open the dev passport">
+            <Link href={`/w/${rep.creator}#launches`} className={styles.addr} onClick={() => setOpen(false)} title="Open the dev's wallet profile">
               {shortAddr(rep.creator)} →
             </Link>
           </div>
@@ -115,13 +115,12 @@ export default function DevBadge({ token, creator }: { token: string; creator: s
               );
             })}
           </ul>
-          <p className={styles.note}>
+          {(cut || rep.onChain) && <p className={styles.note}>
             {cut ? `Newest ${rep.loaded} of ${rep.total ?? `${rep.loaded}+`} shown. ` : ""}
             {rep.onChain ? `vibe/vibe lists ${rep.loaded}; the chain shows ${rep.onChain.launches} (its lists leave older factories out). ` : ""}
-            From vibe/vibe&apos;s launch list. Past launches are context, not a verdict on this one.
-          </p>
-          <Link href={`/dev/${rep.creator}`} className={styles.passport} onClick={() => setOpen(false)}>
-            Dev passport: sells, timing, fees, linked wallets →
+          </p>}
+          <Link href={`/w/${rep.creator}#launches`} className={styles.passport} onClick={() => setOpen(false)}>
+            All launches by this dev: sells, timing, fees →
           </Link>
         </div>
       )}

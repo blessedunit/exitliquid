@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-11-16 · One grade, fewer pages
+- One A–F grade everywhere (token page, rankings, share card), with the facts behind it. Tokens with fewer than 10 holders cap at C; unchecked snipers or dev history cap at B; nothing unknown is ever counted as clean.
+- The token page leads with the grade and the line: snipers, farms and bundles are marked on the traders in the line; one row of key numbers; short sections.
+- Second v6 factory supported; all factory addresses now live in one file (`src/data/factories.json`).
+- Failed reads stop after five tries with "Can't read this token right now" and a Try again button, instead of retrying forever.
+- New loading animation: our pixel traders redrawn in ASCII, walking into the EXIT door.
+- Removed pages merged or redirected: Graduation watch, Hall, FAQ, kit, map, dev passport (now on the wallet page).
+
 ## 2026-10-09 · Minimal redesign, everything open
 - Cleaner, quieter interface: one type scale, fewer frames and badges, the pixel art kept as an accent.
 - All analytics open to everyone: no wallet, token or sign-in needed to see Line Health, holders, bundles or volume.

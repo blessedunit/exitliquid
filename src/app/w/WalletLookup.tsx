@@ -1,36 +1,19 @@
 "use client";
-// Look up any wallet (or dev): paste an address, open its profile (or passport).
+// Look up any wallet: paste an address, open its profile.
 // `inline` = the small form in the breadcrumb row of a profile page; otherwise the big landing field.
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import LookupField from "./LookupField";
 import s from "./w.module.css";
 
-export type LookupExample = { label: string; address: string; href?: string };
+const c = { route: "/w/", placeholder: "Paste a 0x wallet address", cta: "Open profile", inlineCta: "Another wallet", label: "Wallet address" };
 
-const COPY = {
-  wallet: { route: "/w/", placeholder: "Paste a 0x wallet address", cta: "Open profile", inlineCta: "Another wallet", label: "Wallet address" },
-  dev: { route: "/dev/", placeholder: "Paste the dev's 0x address", cta: "Open passport", inlineCta: "Another dev", label: "Dev address" },
-} as const;
-
-const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
-
-export default function WalletLookup({
-  target = "wallet",
-  inline = false,
-  examples = [],
-}: {
-  target?: "wallet" | "dev";
-  inline?: boolean;
-  examples?: LookupExample[];
-}) {
+export default function WalletLookup({ inline = false }: { inline?: boolean }) {
   const router = useRouter();
-  const c = COPY[target];
   const [v, setV] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [openInline, setOpenInline] = useState(false);
-  const id = `${target}-lookup${inline ? "-inline" : ""}`;
+  const id = `wallet-lookup${inline ? "-inline" : ""}`;
 
   const go = (raw: string) => {
     const a = raw.trim();
@@ -50,20 +33,6 @@ export default function WalletLookup({
     );
   }
 
-  const tryLine = examples.length > 0 ? (
-    <p className={s.try}>
-      <span>Try</span>
-      {examples.map((x, i) => (
-        <span key={x.address} className={s.tryItem}>
-          {i > 0 && <span className={s.trySep} aria-hidden>·</span>}
-          <Link href={x.href ?? `${c.route}${x.address}`} prefetch={false} title={x.address}>
-            {x.label} <b>{short(x.address)}</b>
-          </Link>
-        </span>
-      ))}
-    </p>
-  ) : null;
-
   if (!inline) {
     return (
       <LookupField
@@ -75,7 +44,6 @@ export default function WalletLookup({
         onChange={(x) => { setV(x); if (err) setErr(null); }}
         onSubmit={go}
         error={err}
-        after={tryLine}
       />
     );
   }

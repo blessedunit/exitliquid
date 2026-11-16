@@ -30,6 +30,7 @@ export default function TicketCard({ t }: { t: TicketResponse }) {
   const never = t.status === "never";
   const unknown = t.status === "unknown";
   const people = (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? "person" : "people"}`;
+  // someone who walked out is never drawn: the Sprite leaves an empty dashed slot
   const skin = e?.isCreator ? "doorghost" : e?.skin ?? (exited ? "ghost" : "plain");
   const stock = t.stockBacked && t.stockBacked.length > 0;
   return (
@@ -85,10 +86,6 @@ export default function TicketCard({ t }: { t: TicketResponse }) {
           </div>
         </div>
         <div className={styles.fields}>
-          <div className={styles.field}>
-            <span>Points</span>
-            <b>{e ? e.lp.toLocaleString("en-US") : exited ? `0 · gave ${t.exit!.lpReleased}` : unknown ? "?" : "0"}</b>
-          </div>
           {!exited && (
             <div className={styles.field}>
               <span>Bag</span>

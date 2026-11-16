@@ -28,7 +28,7 @@ const departure = localFont({
   src: [{ path: "../assets/fonts/DepartureMono-Regular.woff2", weight: "300 800" }],
 });
 
-// positioning: see README
+// positioning: research/positioning.md
 const description = `${TAGLINE} ${ABOUT}`;
 
 export const metadata: Metadata = {

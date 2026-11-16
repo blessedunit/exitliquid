@@ -1,30 +1,59 @@
-/* Footer (spec §1.11): on the page background, one hairline, two rows, 14px --t2. */
-.footer { border-top: 1px solid var(--line); color: var(--t3); font: 400 14px/20px var(--f-ui); }
-.footer > .row {
-  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: var(--sp-4) var(--sp-7);
-  padding-top: var(--sp-6); padding-bottom: var(--sp-3);
+/* Footer: the pixel corridor (banner_site) stretched full width, darkened top to bottom; credits over its ceiling. */
+.footer {
+  position: relative; isolation: isolate; overflow: hidden; margin-top: 24px;
+  border-top: 1px solid var(--line); color: var(--t2); font: 400 14px/20px var(--f-ui);
+  min-height: 460px; display: flex; flex-direction: column; justify-content: space-between;
+}
+.bg {
+  position: absolute; inset: 0; z-index: -1;
+  background:
+    linear-gradient(180deg, var(--bg) 0%, rgba(10, 12, 11, .86) 26%, rgba(10, 12, 11, .38) 58%, rgba(10, 12, 11, .5) 84%, rgba(10, 12, 11, .9) 100%),
+    url(/sprites/banner_site.webp) center 72% / cover no-repeat;
+  image-rendering: pixelated;
+}
+/* a faint green exposure rising from the door side */
+.bg::after {
+  content: ""; position: absolute; inset: 0;
+  background: radial-gradient(40% 60% at 92% 70%, rgba(92, 235, 156, .14), transparent 70%);
+  mix-blend-mode: screen;
 }
 
-.brand { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; min-width: 0; }
-.mark { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; text-decoration: none !important; }
-.plate { font: 700 11px/1 var(--f-px); letter-spacing: 0.1em; color: var(--exit-ink); background: var(--exit); padding: 5px 6px 4px; clip-path: var(--notch); }
-.liq { font: 500 14px/1 var(--f-ui); color: var(--t1); }
-.tag { color: var(--t2); }
-
-.links { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-6); }
-.links ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 0 var(--sp-4); }
-.links a {
-  display: inline-flex; align-items: center; min-height: 32px; min-width: 40px; /* short ones ("X ↗") stay a real target */
-  color: var(--t2); text-decoration: none !important; transition: color 0.12s;
+.inner {
+  display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 32px 64px;
+  padding-top: 56px;
 }
-.links a:hover { color: var(--t1); }
 
-.footer > .fine { padding-bottom: var(--sp-6); font: 400 12px/16px var(--f-ui); color: var(--t3); }
+.brand { display: grid; gap: 12px; min-width: 0; }
+.mark { display: inline-flex; align-items: center; gap: 10px; text-decoration: none !important; }
+.plate { font: 700 13px/1 var(--f-px); letter-spacing: .1em; color: var(--exit-ink); background: var(--exit); padding: 6px 7px 5px; clip-path: var(--notch); box-shadow: 0 0 24px var(--exit-a20); }
+.liq { font: 600 16px/1 var(--f-ui); color: var(--t1); }
+.tag { margin: 0; color: var(--t2); }
+
+.cols { display: grid; grid-template-columns: repeat(2, minmax(120px, auto)); gap: 24px 56px; }
+.h { margin: 0 0 10px; font: 700 10px/16px var(--f-px); letter-spacing: .14em; text-transform: uppercase; color: var(--exit); }
+.cols ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.cols a {
+  display: inline-flex; align-items: center; gap: 6px; min-height: 30px;
+  color: var(--t1); text-decoration: none !important; transition: color .12s;
+}
+.cols a { gap: 10px; }
+/* link icons: 18 px, bright, one slot each so the labels line up */
+.ico { width: 18px; height: 18px; flex: none; color: var(--t1); transition: color .12s, transform .12s; }
+img.ico { transform: scale(1.25); } /* the vibe/vibe mark has padding inside its square */
+.cols a:hover { color: var(--exit-hot); }
+.cols a:hover .ico { color: var(--exit-hot); }
+
 
 @media (max-width: 760px) {
-
-  .footer > .row { flex-direction: column; align-items: flex-start; gap: var(--sp-4); padding-top: var(--sp-5); }
-  .brand { flex-direction: column; align-items: flex-start; gap: 4px; }
-  .links { flex-direction: column; gap: var(--sp-2); }
-  .links a { min-height: 40px; }
+  .footer { min-height: 0; }
+  /* phones: the corridor as a strip under the links */
+  .bg {
+    top: auto; height: 320px;
+    background:
+      linear-gradient(180deg, var(--bg) 0%, rgba(10, 12, 11, .88) 14%, rgba(10, 12, 11, .3) 46%, rgba(10, 12, 11, .4) 80%, rgba(10, 12, 11, .92) 100%),
+      url(/sprites/banner_site_m.webp) 88% 100% / auto 300px no-repeat, var(--bg);
+  }
+  .inner { flex-direction: column; gap: 28px; padding-top: 40px; padding-bottom: 220px; }
+  .cols { grid-template-columns: 1fr 1fr; gap: 24px 16px; width: 100%; }
+  .cols a { min-height: 40px; }
 }

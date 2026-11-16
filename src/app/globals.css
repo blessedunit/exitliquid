@@ -1,4 +1,4 @@
-/* EXIT · minimal system.
+/* EXIT · minimal system (research/minimal-oct9/spec.md §1).
    One neutral ramp + two accents (green = brand/good, red = risk). Space Grotesk for every word,
    sentence case, no tracking; Departure Mono for numbers, addresses and the one micro-label style
    (column heads + stat labels). Silkscreen only for the wordmark, the EXIT sign, the home hero and the
@@ -260,10 +260,7 @@ button.chip:hover { color: var(--t1); }
 .stale { display: inline-flex; align-items: center; gap: 8px; font: 400 12px/16px var(--f-ui); color: var(--warn); }
 .stale::before { content: ""; width: 6px; height: 6px; background: var(--warn); }
 
-/* ================= loading (spec §1.8) ================= */
-.skel { display: block; height: 14px; background: var(--s2); animation: skel 1.2s ease-in-out infinite; }
-.skel.cell { width: 24px; display: inline-block; }
-@keyframes skel { 50% { opacity: 0.45; } }
+/* ================= loading (spec §1.8): components/ui/Loader (walkers + shimmer) ================= */
 
 /* ================= press feedback ================= */
 html { -webkit-tap-highlight-color: transparent; }

@@ -1,0 +1,35 @@
+{
+  "_": "The ONE list of vibe/vibe contracts on Robinhood Chain testnet. Read by src/lib/factories.ts and ops/early_index.py. A new factory or hook goes here and nowhere else. Lowercase addresses. version: v1 = curve factories (LaunchCreated 0x56eef5…), v6 = taxed factories (LaunchCreated 0xa7e803…). from = block a little before the first launch. plumbing: which holder-exclusion list the contract is in (v1 = lib PLUMBING, v6 = V6_PLUMBING); ops/early_index.py excludes every address in this file. name = shown on wallet pages. learned = lib/state.ts checks this hook itself instead of trusting it.",
+  "factories": [
+    { "id": "main", "version": "v1", "address": "0x40f1be6faf8dab9c143cce1a0a04c2075fb2df59", "from": 115400000, "label": "Curve · main factory", "plumbing": "v1", "name": "vibe/vibe factory" },
+    { "id": "legacy", "version": "v1", "address": "0xb5b7a2f6c4eafa2d73918fca32d50e2126339eb9", "from": 108900000, "label": "Curve · legacy factory", "name": "vibe/vibe legacy factory" },
+    { "id": "first", "version": "v1", "address": "0x4febc267e0c24440bcdef72b5dbc5fe7bed091df", "from": 95900000, "label": "Curve · first factory" },
+    { "id": "v6", "version": "v6", "address": "0xe794217880011f9ca6961340ed5c16ec9559fea0", "from": 126000000, "label": "Taxed v6 factory", "plumbing": "v6" },
+    { "id": "v6b", "version": "v6", "address": "0xac135da186de8325047ef2afd1d16d5971f731f7", "from": 149300000, "deployBlock": 149342691, "label": "Taxed v6 factory (Nov)", "plumbing": "v6" }
+  ],
+  "hooks": [
+    { "address": "0x30534b7601878e2043335c4bf99b4c50a75b90cc", "version": "v1", "note": "first factory era (Aug-Sep 2026)" },
+    { "address": "0xc5b22f31f247a6ee33592792d44bde31c0ef10cc", "version": "v1", "plumbing": "v1", "name": "legacy fee hook" },
+    { "address": "0x2779651fee12f6fb5a187578de6b63709f85d0cc", "version": "v1", "plumbing": "v1", "name": "fee hook" },
+    { "address": "0xa5e27e3e54739162fe52c2c48e55b6dd6572e8ec", "version": "v6", "plumbing": "v6", "note": "taxed v6" },
+    { "address": "0xe61e46724ba5dec31f2be031106558774a65e8ec", "version": "v6", "plumbing": "v6", "learned": true, "note": "hook of the second v6 factory" }
+  ],
+  "plumbing": [
+    { "address": "0xa6a5d4c098da8f79eae1203a8e42ff9ac7a17f06", "plumbing": "v1", "name": "graduation adapter" },
+    { "address": "0xc0a2deebdc40b7083dc9a067f6992f884fb6074d", "plumbing": "v1", "name": "liquidity locker" },
+    { "address": "0x91719a47f855079678b3d5e3af69cde2b830c5c9", "plumbing": "v1", "name": "protocol treasury" },
+    { "address": "0x8366a39cc670b4001a1121b8f6a443a643e40951", "plumbing": "v1", "id": "poolManager", "name": "Uniswap V4 pool manager" },
+    { "address": "0x8876789976decbfcbbbe364623c63652db8c0904", "plumbing": "v1", "name": "universal router" },
+    { "address": "0x000000000022d473030f116ddee9f6b43ac78ba3", "plumbing": "v1", "name": "Permit2" },
+    { "address": "0x000000000000000000000000000000000000dead", "plumbing": "v1", "name": "burn address" },
+    { "address": "0x0d0c44bfeb2a60f9b81c221c4cd24ca89acbacec", "plumbing": "v1", "name": "legacy liquidity locker" },
+    { "address": "0x1ed9e88ae14713ca4bc964bade2bc1e3f5cd501a", "plumbing": "v1", "name": "legacy graduation adapter" },
+    { "address": "0x2784448c519d01d3ae257c0aac0b7cdad8acceb1", "plumbing": "v6", "id": "v6zap", "note": "v6 zap" },
+    { "address": "0x7771e60708060c43c8562c4544fbd5c365e549c0", "plumbing": "v6", "note": "first v6 factory" },
+    { "address": "0x463e27522efa028f59e1c153d065b97cdef02495", "plumbing": "v6", "note": "first v6 factory" },
+    { "address": "0xc58d6b65424ed5ea6f88aa5f000c0efe76f6110a", "plumbing": "v6", "note": "first v6 factory" },
+    { "address": "0xcf7d6547bc11992a6c492e508e701c79b8393930", "plumbing": "v6", "note": "second v6 factory" },
+    { "address": "0xe1f8ca47e43f79248feb529411ba64795d628eb0", "plumbing": "v6", "note": "second v6 factory" },
+    { "address": "0x7f030eb56e8e09063929d1063f603232435e90f0", "plumbing": "v6", "note": "second v6 factory" }
+  ]
+}

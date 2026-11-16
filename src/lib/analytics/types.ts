@@ -127,7 +127,8 @@ export type ExitMath = {
   /** holders in profit after the sell fee (multiple x (1 - fee) > 1) */
   profitHolders: number;
   profitTokens: number;
-  profitSupplyPct: number;
+  /** tokens in profit, % of supply without the bags of unknown cost; null = no bag has a known cost */
+  profitSupplyPct: number | null;
   /** if every holder in profit sold now: the spot price change (%, negative) and the ETH they'd take out */
   dumpPricePct: number | null;
   dumpEthOut: number | null;
@@ -151,7 +152,7 @@ export type VolWindow = {
   volumeEth: number;
   /** volume minus wash minus known-bot trades that aren't wash (each ETH counted once) */
   realEth: number;
-  /** wash = micro trades (< 0.0001 ETH) + in-and-out by one wallet within 2 blocks */
+  /** wash = dust trades (under Volume.dust) + in-and-out by one wallet within 2 blocks */
   washEth: number;
   microTrades: number;
   roundTrips: number;
@@ -173,6 +174,9 @@ export type Volume = {
   /** the window topTraders covers: the last 24 h, or the whole history when the day had no sized trades */
   topTradersWindow: "24h" | "all";
   labelsAsOf: number | null;
+  /** the dust threshold used, in the pair's unit (0.0001 on an ETH pair); null = the pair's scale was unknown,
+   *  so dust was NOT taken out of the volume (wash is a lower bound) */
+  dust: number | null;
 };
 
 /* ---------------- 4. supply ---------------- */
@@ -215,6 +219,9 @@ export type Supply = {
   /** the creator's sells (market legs) and wallets it handed tokens to, whole history; null = creator / start unknown */
   devSells: number | null;
   devMovedTo: number | null;
+  /** % of the dev's own bag sold into the curve / pool: sold / (sold + still held + moved out); v6 gift reserve
+   *  excluded. null = creator or start of history unknown, or the dev never held the token */
+  devSoldPct?: number | null;
 };
 
 /* ---------------- 5. clones ---------------- */
@@ -240,6 +247,10 @@ export type Analytics = {
   block: number;
   computedAt: number;
   graduated: boolean;
+  /** seconds since the launch block (block distance x measured block time); null / absent = unknown */
+  ageSec?: number | null;
+  /** the wallet index's window in days when its labels are usable; null = index too old or missing */
+  indexWindowDays?: number | null;
   health: {
     grade: "A" | "B" | "C" | "D" | "F";
     score: number;
@@ -249,6 +260,8 @@ export type Analytics = {
     snipers: number | null;
     farm: number | null;
     firstBuyers: number;
+    /** of the first buyers, how many still hold (the rest walked out); absent on old cached answers */
+    stillHolding?: number;
   } | null;
   market: Field<Market>;
   bundle: Field<Bundle>;
@@ -259,4 +272,48 @@ export type Analytics = {
   chips: Chip[];
   /** wallet -> tag for the wallets of the latest trades and the creator */
   tags: Record<string, WalletTag>;
+  /**
+   * The unit of every "Eth"-named amount in this answer (spotEth, volumeEth, cost, impact sizes...).
+   * Absent on v1 lines = ETH. A v6 line paired with a token (VIBEVIBE, a stock token) is priced in that
+   * token's units, never converted to a fake ETH number: native=false means "label it with `symbol`".
+   */
+  unit?: { symbol: string; native: boolean };
+  /** taxed v6 launches only: the facts a v1 line doesn't have */
+  v6?: V6Facts;
+};
+
+/* ---------------- v6 (taxed launches) ---------------- */
+
+export type V6Facts = {
+  /** the pair the curve / pool trades against */
+  pair: { symbol: string; native: boolean; address: string | null; decimals: number | null };
+  /** tax per trade side, bps (the curve's current rate); null = unread */
+  taxBps: number | null;
+  /** where the tax goes, bps of the tax (vibe API); null = unknown */
+  taxSplit: { cashBps: number; holdersBps: number; burnBps: number } | null;
+  /** the launch's gift list (airdrop to a list of wallets, delivered from the creator's bag); null = unknown */
+  gifts: {
+    count: number;
+    delivered: number;
+    /** still reserved for gifts, % of total supply (sits in the creator's wallet until delivered) */
+    reservedPct: number;
+    deliveredPct: number;
+    /** wallets holding only gift tokens (never bought, nothing else came in) */
+    onlyGiftHolders: number;
+  } | null;
+  /** tax flows read from the Transfer log, % of total supply */
+  burnedPct: number;
+  /** tokens the token contract holds for holder rewards right now / paid out to holders so far */
+  rewardsHeldPct: number;
+  rewardsPaidPct: number;
+  /** wallets that received holder rewards */
+  rewardWallets: number;
+  /** creator's own part of the launch buy, % of supply (the launch buy minus the gift reserve; vibe API); null = unknown */
+  devPersonalPct: number | null;
+  /** fee paid in the pair currency on the curve so far (pair units); null = curve log unread */
+  curveFeesPair: number | null;
+  /** curve state (pair units); null = unread */
+  door: { reservePair: number; targetPair: number | null; bps: number | null } | null;
+  /** block of graduation (first pool transfer); null = still on the curve */
+  graduatedBlock: number | null;
 };

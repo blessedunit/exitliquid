@@ -11,6 +11,8 @@ const wallets = (n: number) => `${fmtInt(n)} wallet${n === 1 ? "" : "s"}`;
 
 export default function ExitCard({ state }: { state: AnalyticsState }) {
   const f = state.a?.exitMath;
+  // every "Eth" amount of the answer is in the pair's unit: ETH, or the pair token on a v6 launch (NVDA, USDG...)
+  const U = state.a?.unit?.symbol ?? "ETH";
   const d = f?.data;
   const mcap = state.a?.market.data?.mcapEth ?? null;
   // on a bonding curve "everyone in profit sells" only walks the curve back down: a number, not an alarm
@@ -31,12 +33,12 @@ export default function ExitCard({ state }: { state: AnalyticsState }) {
         <>
           <div className={s.hero}>
             <p className={s.big} title={d.maxSell10 ? `Selling ${fmtCompact(d.maxSell10.tokens)} tokens moves the spot price by -10%.${d.maxSell10.capped ? " The curve can't pay more than it holds." : ""}` : undefined}>
-              <b>{d.maxSell10 ? `≈${fmtEth(d.maxSell10.eth)} ETH` : "—"}</b>
+              <b>{d.maxSell10 ? `≈${fmtEth(d.maxSell10.eth)} ${U}` : "—"}</b>
               <span>of sells drop the price 10%</span>
             </p>
             <p className={s.line2}>
               {d.profitHolders
-                ? <><b>{fmtInt(d.profitHolders)}</b> of {fmtInt(d.inLine)} wallets in line are in profit. If they all sold now: <b className={dumpCls}>{pct(d.dumpPricePct)}</b>{d.dumpEthOut !== null && <> · ≈<b>{fmtEth(d.dumpEthOut)} ETH</b> out</>} · <b>{pct(d.profitSupplyPct)}</b> of supply.</>
+                ? <><b>{fmtInt(d.profitHolders)}</b> of {fmtInt(d.exactCost + d.estimatedCost)} wallets with a known cost are in profit. If they all sold now: <b className={dumpCls}>{pct(d.dumpPricePct)}</b>{d.dumpEthOut !== null && <> · ≈<b>{fmtEth(d.dumpEthOut)} {U}</b> out</>} · <b>{pct(d.profitSupplyPct)}</b> of supply.</>
                 : d.dumpNote ?? "Nobody in profit after fees."}
             </p>
             {d.dumpNote && d.profitHolders > 0 && <p className={s.line2}>{d.dumpNote}</p>}
@@ -61,13 +63,13 @@ export default function ExitCard({ state }: { state: AnalyticsState }) {
           )}
 
           <dl className={s.kv}>
-            <div title={`A new ${d.breakEvenSize} ETH buy pays 1.25% in, 1.25% out and its own price impact. This is how far the price must rise before selling those tokens returns ${d.breakEvenSize} ETH.`}>
-              <dt>Break-even · {d.breakEvenSize} ETH</dt>
+            <div title={`A new ${d.breakEvenSize} ${U} buy pays 1.25% in, 1.25% out and its own price impact. This is how far the price must rise before selling those tokens returns ${d.breakEvenSize} ETH.`}>
+              <dt>Break-even · {d.breakEvenSize} {U}</dt>
               <dd>{pct(d.breakEvenPct, true)}</dd>
             </div>
             <div title="New buys from other people needed to lift the price that far (fees included).">
               <dt>New money needed</dt>
-              <dd>{d.breakEvenEth === null ? <span className={s.dim}>—</span> : `≈${fmtEth(d.breakEvenEth)} ETH`}</dd>
+              <dd>{d.breakEvenEth === null ? <span className={s.dim}>—</span> : `≈${fmtEth(d.breakEvenEth)} ${U}`}</dd>
             </div>
             <div title="The two 1.25% fees alone, with no price impact.">
               <dt>Fees alone</dt>
@@ -78,14 +80,14 @@ export default function ExitCard({ state }: { state: AnalyticsState }) {
           <h4 className={s.subHead}>Price impact by size</h4>
           <div className={s.tblWrap}>
             <table className={s.tbl}>
-              <caption className="srOnly">Price impact by trade size{mcap !== null ? `, MCAP ${fmtEth(mcap)} ETH` : ""}</caption>
+              <caption className="srOnly">Price impact by trade size{mcap !== null ? `, MCAP ${fmtEth(mcap)} ${U}` : ""}</caption>
               <thead>
                 <tr><th scope="col">Size</th><th scope="col" className={s.narrowHide}>Buy gets</th><th scope="col" title="Average price paid over spot, fee included">Buy cost</th><th scope="col" title="Spot after the buy">After buy</th><th scope="col" title="Spot after selling tokens worth this much ETH">After sell</th></tr>
               </thead>
               <tbody>
                 {d.impact.map((r) => (
                   <tr key={r.eth} title={r.note ?? (r.quoted ? "Buy priced by the contract's own quote" : "Priced by the reserve model")}>
-                    <td className={s.rowHead}>{r.eth} ETH</td>
+                    <td className={s.rowHead}>{r.eth} {U}</td>
                     <td className={s.narrowHide}>{r.buyTokens === null ? <span className={s.dim}>—</span> : fmtCompact(r.buyTokens)}</td>
                     <td>{pct(r.buyImpactPct, true)}</td>
                     <td className={s.up}>{pct(r.buyPriceAfterPct, true)}</td>

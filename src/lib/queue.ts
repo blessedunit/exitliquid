@@ -71,7 +71,6 @@ export type QueueState = {
 
 // Ranks by what your bag is worth right now, in ETH at the current curve price.
 // (By share of supply they only measured WHEN you bought: price grows ~15x along the curve.)
-export const SUPPLY = 1_000_000_000n * 10n ** 18n;
 export const TIERS: { tier: number; skin: Skin; name: string; minEth: number }[] = [
   { tier: 5, skin: "suit", name: "The Suit", minEth: 0.03 },
   { tier: 4, skin: "getaway", name: "Crypto Bro", minEth: 0.012 },

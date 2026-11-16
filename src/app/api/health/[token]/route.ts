@@ -1,6 +1,8 @@
-import { buildFor, PLUMBING } from "@/lib/service";
+import { buildFor } from "@/lib/service";
+import { PLUMBING } from "@/lib/factories";
 import { loadEvents, ZERO } from "@/lib/chain";
 import { healthCached, healthOf } from "@/lib/analytics/healthMemo";
+import { healthV6, isKnownV6 } from "@/lib/analytics/v6engine";
 import { earlyIndex } from "@/lib/earlyIndex";
 import type { HealthResult } from "@/lib/health";
 import { isAddress } from "@/lib/ticket";
@@ -48,7 +50,19 @@ export async function GET(req: Request, ctx: { params: Promise<{ token: string }
       Response.json(b, { headers: FREE_HEADERS });
     const hit = healthCached(token);
     if (hit) return send(bodyOf(hit));
-    const built = await buildFor(token);
+    // taxed v6 launches (16.10): the same replay over the token's own log, v6 plumbing and gift list handled
+    const v6 = async () => {
+      const h = await healthV6(token);
+      return h ? send(bodyOf(h)) : Response.json({ error: "not_vibe" }, { status: 404, headers: { "cache-control": "no-store" } });
+    };
+    if (isKnownV6(token)) return await v6();
+    let built;
+    try {
+      built = await buildFor(token);
+    } catch (e) {
+      if (String((e as Error)?.message ?? e).includes("not a vibe token")) return await v6();
+      throw e;
+    }
     const meta = built.meta;
     if (built.unavailable || built.stale || !meta?.curve) {
       return Response.json({ error: "unknown" }, { status: 503, headers: { "cache-control": "no-store" } });

@@ -1,21 +1,32 @@
 "use client";
 import { useEffect, useState } from "react";
-import type { MoodResponse, QueueResponse } from "./types";
+import type { QueueResponse } from "./types";
 import { takePrimed } from "./prime";
+import { useTries } from "@/components/useTries";
 
-// Polls the line every `ms` while the tab is visible.
+// Polls the line every `ms` while the tab is visible. With no line to show, a failed read asks again quietly
+// (data and error stay null: still loading); after MAX_TRIES it stops: error "failed" + `failed` (Try again).
 export function useQueue(ms = 20_000, limit = 200, token: string | null = null) {
   const [data, setData] = useState<QueueResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { failed, round, start, fail, ok } = useTries(token);
   useEffect(() => {
     let alive = true;
+    let stopped = false;
+    start();
+    // nothing on screen and no answer: one more failed try (false = that was the last, stop asking)
+    const miss = () => {
+      if (fail(token)) return;
+      stopped = true;
+      setError("failed");
+    };
     let timer: ReturnType<typeof setTimeout> | undefined;
     let running = false;
     let last = 0; // when the last answer came in (focus / tab-back only refetches a line older than 5 s)
     let good = false; // a real line is on screen: an "unavailable" answer must not wipe it
     const ctl = new AbortController();
     const tick = async () => {
-      if (!alive || running) return;
+      if (!alive || running || stopped) return;
       running = true;
       if (document.visibilityState === "visible") {
         try {
@@ -33,21 +44,26 @@ export function useQueue(ms = 20_000, limit = 200, token: string | null = null) 
           const j = (await r.json()) as QueueResponse;
           last = Date.now();
           if (alive) {
-            if (j.unavailable && good) {
-              // stale-while-revalidate: the last good line stays on screen, "Reconnecting…" shows over it
-              setError("unavailable");
+            if (j.unavailable) {
+              // stale-while-revalidate: the last good line stays on screen, marked; with none it is a failed try
+              if (good) setError("unavailable");
+              else miss();
             } else {
               setData(j);
               setError(null);
-              good = !j.unavailable;
+              good = true;
+              ok();
             }
           }
         } catch (e) {
-          if (alive) setError(String(e));
+          if (alive) {
+            if (good) setError(String(e));
+            else miss();
+          }
         }
       }
       running = false;
-      if (alive) timer = setTimeout(tick, ms);
+      if (alive && !stopped) timer = setTimeout(tick, ms);
     };
     const wake = () => {
       if (document.visibilityState !== "visible" || Date.now() - last < 5_000) return;
@@ -66,23 +82,8 @@ export function useQueue(ms = 20_000, limit = 200, token: string | null = null) 
       window.removeEventListener("focus", wake);
       window.removeEventListener("online", wake);
     };
-  }, [ms, limit, token]);
-  return { data, error };
-}
-
-export function useMood() {
-  const [mood, setMood] = useState<MoodResponse | null>(null);
-  useEffect(() => {
-    let alive = true;
-    fetch("/api/mood")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((j) => alive && setMood(j))
-      .catch(() => alive && setMood(null));
-    return () => {
-      alive = false;
-    };
-  }, []);
-  return mood;
+  }, [ms, limit, token, round, start, fail, ok]);
+  return { data, error: failed || error !== "failed" ? error : null, failed };
 }
 
 export function ago(ts: number) {

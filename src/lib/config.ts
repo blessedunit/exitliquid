@@ -20,13 +20,12 @@ export const IS_LIVE = /^0x[0-9a-f]{40}$/.test(EXIT_TOKEN);
 export const ACTIVE_TOKEN = IS_LIVE ? EXIT_TOKEN : DEMO_TOKEN;
 
 export const PUBLIC_SITE_URL = "https://exitliquid.fun";
-export const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || PUBLIC_SITE_URL;
 export const X_HANDLE = process.env.NEXT_PUBLIC_X_HANDLE || "exitliqfun";
 export const X_URL = `https://x.com/${X_HANDLE}`;
 /** the public source code (README, changelog, MIT) */
 export const GITHUB_URL = "https://github.com/blessedunit/exitliquid";
-// Hide X links until the account really exists (set NEXT_PUBLIC_X_LIVE=1).
-export const X_LIVE = process.env.NEXT_PUBLIC_X_LIVE === "1";
+// The X account is live (@exitliqfun): its links show unless NEXT_PUBLIC_X_LIVE=0.
+export const X_LIVE = process.env.NEXT_PUBLIC_X_LIVE !== "0";
 export const VIBE_X = "vibevibefun";
 
 // The CTA has its final label at all times. Before launch it stays inside the site on /exit
@@ -37,5 +36,3 @@ export const CTA = IS_LIVE
   ? { href: `${VIBE_APP}/token/${EXIT_TOKEN}`, label: "Get in line", external: true }
   : { href: "/exit#h-rules", label: "Get in line", external: false };
 
-export const DISCLAIMER =
-  "Independent community project built on the vibe/vibe testnet. Not affiliated with vibe/vibe or Robinhood Markets. Testnet tokens have no value.";

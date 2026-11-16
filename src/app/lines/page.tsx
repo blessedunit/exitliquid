@@ -1,24 +1,21 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import MyLines, { MyLinesShell } from "./MyLines";
+import Rankings from "./Rankings";
 import styles from "./lines.module.css";
 
+// Rankings (nav "Rankings", URL /lines; /rankings redirects here): six screener leaderboards + your pinned tokens.
 export const metadata: Metadata = {
   alternates: { canonical: "/lines" },
-  title: "My Lines",
-  description: "Your place in every vibe/vibe line you hold.",
+  title: "Rankings",
+  description: "The cleanest vibe/vibe tokens and the worst red flags right now: snipers, dev selling, whales, real volume.",
 };
 
 export default function LinesPage() {
   return (
     <section className={styles.page}>
       <div className="wrap">
-        <div className={styles.head}>
-          <h1>My lines</h1>
-          <p>Your place in every vibe/vibe line you hold. Read-only.</p>
-        </div>
-        <Suspense fallback={<MyLinesShell />}>
-          <MyLines />
+        <Suspense fallback={<div className={styles.fallback} />}>
+          <Rankings />
         </Suspense>
       </div>
     </section>

@@ -16,15 +16,6 @@
 .dot { color: var(--t3); }
 .staleTag { color: var(--warn, var(--t1)); font-weight: 500; }
 
-/* loading: the loaded block's shape, pulsing */
-.skel { display: grid; gap: 12px; }
-.skel i, .skRow { display: block; height: 12px; background: var(--s2); animation: pulse 1.2s ease-in-out infinite; }
-.skel .skBig { width: 44%; height: 40px; }
-.skel .skLine { width: 72%; }
-.skGrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 8px 0; }
-.skGrid i { height: 36px; }
-.skRow { width: 70%; height: 14px; }
-@keyframes pulse { 50% { opacity: .45; } }
 
 .msg { margin: 0; color: var(--t3); font: 400 13px/20px var(--f-ui); }
 .note, .footReason { margin: 12px 0 0; color: var(--t3); font: 400 12px/16px var(--f-ui); }
@@ -160,4 +151,3 @@
   .legend { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .devLink, .more { min-height: 44px; }
 }
-@media (prefers-reduced-motion: reduce) { .skel i, .skRow { animation: none; } }

@@ -2,6 +2,7 @@
 // The trade tape: every buy and sell, newest first. A row opens that wallet's ticket.
 import { useEffect, useRef, useState } from "react";
 import { useLineCtx } from "@/lib/lineContext";
+import { shimmer } from "./ui/Loader";
 import styles from "./CorridorTape.module.css";
 import { fmtAge, fmtCompact, fmtEth, shortAddr } from "@/lib/format";
 import ProfileLink from "./ProfileLink";
@@ -155,7 +156,7 @@ export default function CorridorTape({
         ) : (
           // loading, or live data unknown (the page shows one "Reconnecting" plate): rows waiting, never "no trades"
           <div className={styles.skeleton} aria-label={unknown ? "Trades unknown right now" : "Reading the tape"} role="status">
-            {Array.from({ length: 8 }, (_, i) => <i key={i} style={{ animationDelay: `${i * 0.08}s` }} />)}
+            {Array.from({ length: 8 }, (_, i) => <i key={i}><span className={shimmer} style={{ animationDelay: `${i * 0.08}s` }} /></i>)}
           </div>
         )}
         {!expanded && filtered.length > FIRST_ROWS && (

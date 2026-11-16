@@ -8,6 +8,10 @@ export type Dir = "desc" | "asc";
 export type BoardState = { tab: Tab; sort: SortKey; dir: Dir; period: Period; q: string; filters: FilterId[] };
 
 export const TAB_IDS: Tab[] = ["hot", "new", "door", "grad", "watch"];
+// hot / door / grad read vibe's v1 index, frozen since 29.09 (audit 15.10): hidden until they run on v6.
+// Old ?tab= links to them open New instead of a 16-day-old list.
+export const LIVE_TABS: Tab[] = ["new", "watch"];
+export const DEFAULT_TAB: Tab = "new";
 export const SORT_KEYS: SortKey[] = ["rank", "new", "door", "eta", "holders", "vol", "chg", "buys", "sig"];
 export const DEFAULT_SORT: Record<Tab, SortKey> = { hot: "rank", new: "new", door: "door", grad: "rank", watch: "rank" };
 // ETA reads best soonest-first; everything else biggest-first
@@ -28,7 +32,7 @@ export function cleanQuery(v: string | null | undefined): string {
 }
 
 export function parseBoard(sp: Params): BoardState {
-  const tab = TAB_IDS.find((t) => t === sp.get("tab")) ?? "hot";
+  const tab = LIVE_TABS.find((t) => t === sp.get("tab")) ?? DEFAULT_TAB;
   const [k, d] = (sp.get("sort") ?? "").split("-");
   const sort = SORT_KEYS.find((s) => s === k) ?? DEFAULT_SORT[tab];
   const dir: Dir = d === "asc" || d === "desc" ? d : naturalDir(sort);
@@ -41,7 +45,7 @@ export function parseBoard(sp: Params): BoardState {
 /** query string for a state; defaults are left out so a plain /launches stays plain */
 export function boardQuery(s: BoardState): string {
   const p = new URLSearchParams();
-  if (s.tab !== "hot") p.set("tab", s.tab);
+  if (s.tab !== DEFAULT_TAB) p.set("tab", s.tab);
   if (s.sort !== DEFAULT_SORT[s.tab] || s.dir !== naturalDir(s.sort)) p.set("sort", s.dir === naturalDir(s.sort) ? s.sort : `${s.sort}-${s.dir}`);
   if (s.period !== "24h") p.set("p", s.period);
   if (s.q) p.set("q", s.q);

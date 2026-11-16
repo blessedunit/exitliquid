@@ -38,6 +38,11 @@ export default function NavLinks({ items, className }: { items: NavItem[]; class
   );
 }
 
+/** children everywhere but on the home page ("/"), where `fallback` takes their place */
+export function OffHome({ children, fallback = null }: { children: React.ReactNode; fallback?: React.ReactNode }) {
+  return usePathname() === "/" ? <>{fallback}</> : <>{children}</>;
+}
+
 // Global search (typeahead, keyboard, v6-aware) lives in SearchSuggest; this name stays for Header.tsx.
 // `hotkey` binds "/" to focus this box (only one instance should have it).
 export function HeaderSearch(props: SearchSuggestProps) {

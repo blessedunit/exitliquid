@@ -16,16 +16,6 @@ export const metadata: Metadata = {
 const WORD: Record<Level, string> = { ok: "Fresh", warn: "Lagging", down: "Down" };
 const TONE: Record<Level, string> = { ok: k.stGood, warn: k.stMid, down: k.stBad };
 
-// How old each number on the site may be, by design (server caches + page polling).
-const CACHES: [string, string, string][] = [
-  ["Line, places, trades", "Chain logs", "~20 s"],
-  ["Launch board, ETA pace", "vibe/vibe API", "30 s · pace 2 min"],
-  ["Sparklines", "vibe/vibe API", "5 min"],
-  ["Line Health", "Chain + Early Index", "2 min · labels: index age"],
-  ["Top holders & funders", "vibe/vibe + explorer", "holders 5 min · funders kept"],
-  ["Dev history", "vibe/vibe API", "10 min"],
-];
-
 export default async function StatusPage() {
   const r = await statusReport();
   const fresh = r.probes.filter((p) => p.level === "ok").length;
@@ -76,34 +66,9 @@ export default async function StatusPage() {
           </ul>
         </section>
 
-        <section className={styles.block} aria-labelledby="cache-h">
-          <div className={k.secHead}>
-            <h2 id="cache-h" className={k.h2}>Cache windows</h2>
-            <p className={k.lead}>How old a number can be, by design.</p>
-          </div>
-          <table className={`${k.table} ${styles.table}`}>
-            <thead>
-              <tr>
-                <th scope="col">Data</th>
-                <th scope="col">Source</th>
-                <th scope="col" className={k.r}>Max age</th>
-              </tr>
-            </thead>
-            <tbody>
-              {CACHES.map(([what, src, age]) => (
-                <tr key={what}>
-                  <td data-l="Data">{what}</td>
-                  <td data-l="Source" className={styles.src}>{src}</td>
-                  <td data-l="Max age" className={k.n}>{age}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
-
         <p className={styles.foot}>
           A source that doesn&apos;t answer never turns into a zero: its numbers show as — with the reason. How every metric is computed:{" "}
-          <Link href="/methodology">Methodology</Link>.
+          <Link href="/methodology">How grades work</Link>.
         </p>
       </div>
     </section>

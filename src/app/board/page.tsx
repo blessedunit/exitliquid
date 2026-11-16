@@ -1,20 +1,6 @@
-import type { Metadata } from "next";
-import PageHead from "@/components/PageHead";
-import BoardTabs from "./BoardTabs";
+import { permanentRedirect } from "next/navigation";
 
-export const metadata: Metadata = {
-  alternates: { canonical: "/board" },
-  title: "Leaderboard",
-  description: "The $EXIT line ranked by Liquidity Points.",
-};
-
-export default function BoardPage() {
-  return (
-    <section>
-      <div className="wrap">
-        <PageHead title="Leaderboard">The $EXIT line ranked by points.</PageHead>
-        <BoardTabs />
-      </div>
-    </section>
-  );
+// The points leaderboard was retired (17.10): /board lands on the $EXIT page.
+export default function BoardRedirect() {
+  permanentRedirect("/exit");
 }

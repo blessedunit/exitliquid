@@ -15,13 +15,16 @@ import { redis, storeKind } from "./store";
 import { BoundedTtlMap } from "./bounded";
 
 /**
- * Client IP. On Vercel `x-forwarded-for` is set by the platform edge (client-supplied values
- * are overwritten), so the first entry is trustworthy there. Self-hosted without a proxy in
- * front, the header is spoofable: then the limit is per claimed IP, which is still bounded
- * by the global limiter's key space expiring every window.
+ * Client IP. Self-hosted behind Cloudflare Tunnel (since 06.10) the first `x-forwarded-for` entry
+ * is whatever the client sent, so a fake one per request skipped every limit (audit 15.10).
+ * `cf-connecting-ip` is set by Cloudflare itself and the server listens on 127.0.0.1 only, so
+ * nobody reaches it without passing Cloudflare. On Vercel the platform's XFF is still used.
  */
 export function clientIp(req: Request | Headers): string {
   const h = req instanceof Headers ? req : req.headers;
+  const cf = h.get("cf-connecting-ip");
+  if (cf) return cf.trim().slice(0, 64);
+  if (!process.env.VERCEL) return "local"; // off Vercel, no Cloudflare header = a request from this PC
   const xff = h.get("x-forwarded-for");
   const ip = (xff ? xff.split(",")[0] : h.get("x-real-ip") || "").trim();
   return ip.slice(0, 64) || "local";

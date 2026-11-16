@@ -1,90 +1,69 @@
-/* Home hero (minimal spec §3.1): no frame. Display H1 + lead | pixel crowd, then the 56 px field, then one stats line.
-   The page section gives the 48 px (phone 24) under the header; 48 px to the board toolbar. */
-.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+/* Home (Launches): a centred title line + the paste field; the launch board follows. */
+.root { display: grid; gap: 0; margin: 0 0 16px; }
 
-.root { display: grid; gap: 24px; margin: 0 0 48px; padding: 0; animation: introIn .35s ease-out both; }
+/* ---------- hero ---------- */
+.hero {
+  position: relative; isolation: isolate; display: grid; justify-items: center; gap: 16px; text-align: center;
+  padding: 32px 0 24px; animation: introIn .35s ease-out both;
+}
+.hero::before {
+  content: ""; position: absolute; z-index: -1; left: 50%; top: -40px; width: min(1100px, 100vw); height: 340px; translate: -50% 0;
+  background: radial-gradient(50% 60% at 50% 40%, rgba(61, 220, 132, .10), transparent 70%);
+  pointer-events: none;
+}
 @keyframes introIn { from { opacity: 0; } }
+.h1 { margin: 0; font: 700 40px/48px var(--f-px); text-transform: uppercase; letter-spacing: .01em; color: var(--t1); text-wrap: balance; }
+.accent { color: var(--exit); text-shadow: 0 0 24px var(--exit-a20); }
+.lead { margin: 0; max-width: 62ch; font: 400 16px/24px var(--f-ui); color: var(--t2); }
 
-.top { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 32px; align-items: end; }
-.copy { display: grid; gap: 16px; min-width: 0; }
-.h1 { margin: 0; font: 700 48px/52px var(--f-px); letter-spacing: 0; text-transform: uppercase; color: var(--t1); }
-.br { display: block; }
-.lead { margin: 0; max-width: 60ch; font: 400 16px/24px var(--f-ui); color: var(--t2); }
-
-/* the paste field: 56 px, sentence-case Check */
-.searchWrap { min-width: 0; max-width: 720px; }
-.searchWrap .search { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; height: 56px; background: var(--s1); }
+.searchWrap { width: min(640px, 100%); min-width: 0; margin-top: 8px; text-align: left; }
+.searchWrap .search { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; height: 60px; background: var(--s1); }
 .searchWrap .search input { font: 400 16px var(--f-ui); }
-.searchWrap button[type="submit"] { height: 44px; padding: 0 20px; font: 600 14px/1 var(--f-ui); letter-spacing: 0; text-transform: none; }
+.searchWrap button[type="submit"] { height: 46px; padding: 0 22px; font: 600 14px/1 var(--f-ui); letter-spacing: 0; text-transform: none; }
 
-/* one stats line: numbers · Market →, the live dot on the right */
-.stats { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 24px; margin: -8px 0 0; font: 400 14px/20px var(--f-ui); color: var(--t2); }
-.nums { display: inline-flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; }
-.nums b { font: 400 14px/20px var(--f-num); font-variant-numeric: tabular-nums; color: var(--t1); }
-.dot { color: var(--t3); }
-.more { color: var(--t1); text-decoration: none !important; }
-.more:hover { color: var(--exit); }
-.live { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font: 400 12px/16px var(--f-ui); color: var(--t3); white-space: nowrap; }
-.live i { width: 6px; height: 6px; background: var(--exit); animation: blink 1.4s steps(1) infinite; }
-@keyframes blink { 50% { opacity: .25; } }
-.textBtn { min-height: 32px; margin: -6px -8px -6px 0; padding: 0 8px; border: 0; background: transparent; color: var(--t3); font: 400 12px/1 var(--f-ui); cursor: pointer; white-space: nowrap; }
-.textBtn:hover { color: var(--t1); background: var(--s2); }
-.textBtn:focus-visible, .more:focus-visible { outline: 2px solid var(--exit); outline-offset: 2px; }
+.key { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px 24px; margin: 4px 0 0; padding: 0; list-style: none; }
+.key li { display: inline-flex; align-items: center; gap: 4px; font: 400 13px/20px var(--f-ui); color: var(--t2); }
+.key li span:last-child { margin-left: 6px; }
 
-/* the pixel moment: five travellers walk to the EXIT door and through it */
-.scene { position: relative; height: 120px; overflow: hidden; }
-.floor { position: absolute; left: 0; right: 0; bottom: 0; height: 1px; background: var(--line-2); }
-.walker {
-  position: absolute; bottom: 1px; left: 0; height: 48px; width: auto; image-rendering: pixelated; opacity: 0;
-  animation: walk 15s linear infinite, bob .32s cubic-bezier(.45,0,.55,1) infinite alternate;
-  animation-delay: calc(var(--i) * -3s), calc(var(--i) * -.11s);
-}
-/* from off-stage left to the door, fading through it */
-@keyframes walk {
-  0% { left: -40px; opacity: 0; }
-  6% { opacity: 1; }
-  90% { opacity: 1; }
-  97%, 100% { left: calc(100% - 52px); opacity: 0; }
-}
-@keyframes bob { to { transform: translateY(-2px); } }
-.door { position: absolute; right: 16px; bottom: 1px; width: 38px; height: 64px; border: 1px solid var(--exit); border-bottom: 0; background: linear-gradient(to top, var(--exit-a10), transparent); }
-.door em {
-  position: absolute; left: 50%; top: -22px; translate: -50% 0; padding: 3px 5px 2px; background: var(--exit-sign, #08803e); color: #fff;
-  font: 400 10px/1 var(--f-px); font-style: normal; letter-spacing: .06em; box-shadow: 0 0 16px var(--exit-a20);
-}
+/* ---------- the two boards ---------- */
+.boards { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+.board { min-width: 0; padding: 4px 16px 8px; background: var(--s1); border: 1px solid var(--line); }
+.board > div > :last-child { border-bottom: 0; }
+.bHead { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 52px; border-bottom: 1px solid var(--line-2); }
+.bTitle { display: inline-flex; align-items: center; gap: 10px; margin: 0; font: 700 15px/20px var(--f-px); text-transform: uppercase; letter-spacing: .02em; color: var(--t1); }
+.bTitle i { width: 10px; height: 10px; background: var(--tone); box-shadow: 0 0 12px var(--tone); }
+.good { --tone: var(--exit); }
+.bad { --tone: var(--down); }
+.all { display: inline-flex; align-items: center; min-height: 40px; padding: 0 8px; margin-right: -8px; color: var(--t2); font: 500 13px/1 var(--f-ui); text-decoration: none !important; }
+.all:hover { color: var(--t1); background: var(--s2); }
+.note { margin: 0; padding: 32px 0; color: var(--t3); font: 400 14px/20px var(--f-ui); text-align: center; }
 
-/* folded (second visit on): the search row + the stats line */
-.min { gap: 16px; margin-bottom: 40px; }
-.min .stats { margin-top: 0; }
+.status { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin: 14px 0 0; font: 400 12px/16px var(--f-ui); color: var(--t3); }
+.status b { font: 400 12px/16px var(--f-num); color: var(--t2); font-variant-numeric: tabular-nums; }
+.how { color: var(--t2); text-decoration: none !important; }
+.how:hover { color: var(--exit); }
 
-@media (max-width: 1100px) {
-  .top { grid-template-columns: minmax(0, 1fr) 280px; }
-  .h1 { font-size: 40px; line-height: 44px; }
+@media (max-width: 1040px) {
+  .boards { grid-template-columns: minmax(0, 1fr); }
 }
-/* phones: display 32, the crowd as a 64 px strip under the stats */
 @media (max-width: 760px) {
-  .root { gap: 16px; padding-top: 0; margin-bottom: 32px; }
-  .top { display: contents; }
-  .copy { gap: 12px; }
-  .h1 { font-size: 30px; line-height: 34px; }
-  .lead { font-size: 15px; line-height: 22px; }
-  .stats { margin-top: -4px; gap: 4px 16px; font-size: 13px; }
-  .nums b { font-size: 13px; }
-  .live { display: none; }
-  .wk { display: none; }
-  .textBtn { margin-left: auto; }
-  .scene { order: 9; height: 64px; }
-  .walker { height: 36px; animation-duration: 12s, .32s; animation-delay: calc(var(--i) * -2.4s), calc(var(--i) * -.11s); }
-  .door { width: 28px; height: 46px; right: 8px; }
-  .door em { top: -18px; font-size: 8px; }
-  .searchWrap button[type="submit"] { padding: 0 14px; }
-  .min { margin-bottom: 24px; gap: 12px; }
+  .root { margin-bottom: 8px; }
+  .hero { padding: 8px 0 16px; gap: 14px; }
+  .h1 { font-size: 21px; line-height: 28px; }
+  /* phones: the button is just the arrow, so the whole placeholder fits */
+  .searchWrap button[type="submit"] { padding: 0 16px; font-size: 0; }
+  .searchWrap button[type="submit"] span { font-size: 18px; }
+  .searchWrap .search input::placeholder { font-size: 14px; }
+  .lead { font-size: 14px; line-height: 20px; }
+  .searchWrap .search { height: 56px; }
+  .key { gap: 8px 16px; }
+  .key li { font-size: 12px; }
+  .boards { gap: 16px; }
+  .board { margin: 0 -16px; padding: 0 16px 4px; border-left: 0; border-right: 0; }
+  /* phones: six rows each, "See all" holds the rest */
+  .board [role="table"] > a:nth-of-type(n + 7) { display: none; }
+  .board [role="table"] > a:nth-of-type(6) { border-bottom: 0; }
 }
-@media (max-width: 400px) {
-  .h1 { font-size: 26px; line-height: 30px; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .root, .live i { animation: none !important; }
-  .walker { animation: none !important; opacity: 1; left: calc(var(--i) * 18% + 4%); }
-}
+@media (prefers-reduced-motion: reduce) { .hero { animation: none; } }
+.scale { margin-top: 18px; justify-items: center; }
+.scale ul { justify-content: center; }

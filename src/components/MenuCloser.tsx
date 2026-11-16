@@ -32,28 +32,6 @@ export default function MenuCloser() {
     const t = window.setTimeout(markAllFades, 600);
     return () => window.clearTimeout(t);
   }, [pathname]);
-  // home: the header search hides while the hero search (#home-search) is on screen (spec §2 "Merge"),
-  // so one page never shows two search boxes at once. visibility only: the header never shifts.
-  useEffect(() => {
-    const root = document.documentElement;
-    let io: IntersectionObserver | null = null;
-    const attach = () => {
-      const el = document.getElementById("home-search")?.closest("form");
-      if (!el || io) return;
-      io = new IntersectionObserver(([e]) => {
-        if (e.isIntersecting) root.dataset.heroSearch = "";
-        else delete root.dataset.heroSearch;
-      }, { rootMargin: "-56px 0px 0px 0px" });
-      io.observe(el);
-    };
-    attach();
-    const t = window.setTimeout(attach, 800);
-    return () => {
-      window.clearTimeout(t);
-      io?.disconnect();
-      delete root.dataset.heroSearch;
-    };
-  }, [pathname]);
   useEffect(() => {
     const onScroll = (e: Event) => markFade(e.target as Element);
     let raf = 0;
@@ -103,6 +81,7 @@ export default function MenuCloser() {
       window.removeEventListener("keydown", onKey);
       document.removeEventListener("pointerdown", onDown);
     };
-  }, []);
+    // the search sheet is not in the header on the home page: bind again when the route changes
+  }, [pathname]);
   return null;
 }

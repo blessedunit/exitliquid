@@ -134,7 +134,6 @@ export default function MarketPass({ wallet, entry, trade, data, onClose, tag = 
 
       {entry && (
         <dl className={styles.kvs}>
-          <div title="Points from new buyers who joined behind this wallet"><dt>Points</dt><dd>{fmtInt(entry.lp)}</dd></div>
           <div><dt>Bag</dt><dd>{fmtTokens(entry.balance)}</dd></div>
           <div title="Wallets behind this one in line"><dt>Behind you</dt><dd className={styles.acc}>{fmtInt(entry.behind)}</dd></div>
           <div title={pnlCell.title}><dt>PnL</dt><dd className={`${styles.pnl} ${pnlCell.tone}`}>{pnlCell.value}{pnlCell.sub && <small>{pnlCell.sub.map((part) => <span key={part}>{part}</span>)}</small>}</dd></div>

@@ -20,6 +20,10 @@ export async function GET(req: Request) {
     }
     return Response.json(r, { headers: { "cache-control": "public, s-maxage=30, stale-while-revalidate=60" } });
   } catch {
+    // vibe's single-launch lookup fails on any wallet address (502/503, not a 404), which broke every wallet
+    // search (audit 15.10). A full address with no code is a wallet whatever vibe says: offer its profile.
+    if (/^0x[0-9a-fA-F]{40}$/.test(q) && (await isWallet(q.toLowerCase())) === true)
+      return Response.json({ items: [], more: false, kind: "address", wallet: true }, { headers: { "cache-control": "public, s-maxage=30, stale-while-revalidate=60" } });
     // unknown right now, never "no match"
     return Response.json({ error: "unknown" }, { status: 503, headers: { "cache-control": "no-store" } });
   }

@@ -3,7 +3,7 @@ import { ImageResponse } from "next/og";
 import { ogFonts, ogSprite, OgImg, OG } from "@/lib/og";
 import type { Skin } from "@/lib/skins";
 
-export const alt = "Exit Liquidity ($EXIT): every ponzi needs exit liquidity. We made it a leaderboard.";
+export const alt = "Exit Liquidity ($EXIT): every ponzi needs exit liquidity. We made it a line.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -27,7 +27,7 @@ export default async function Image() {
             <span>EVERY PONZI NEEDS</span>
             <span style={{ color: OG.exit }}>EXIT LIQUIDITY.</span>
           </div>
-          <div style={{ display: "flex", fontSize: 30, color: OG.muted, marginTop: 14 }}>We made it a leaderboard. Your place has a story.</div>
+          <div style={{ display: "flex", fontSize: 30, color: OG.muted, marginTop: 14 }}>We made it a line. Your place has a story.</div>
         </div>
         <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "flex-end", marginTop: "auto", padding: "0 64px", borderBottom: `8px solid ${OG.exit}` }}>
           <div style={{ display: "flex", alignItems: "flex-end" }}>

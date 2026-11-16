@@ -11,14 +11,14 @@
 
 <p align="center">
   <a href="https://exitliquid.fun"><b>exitliquid.fun</b></a> ·
-  <a href="https://exitliquid.fun/methodology">Methodology</a> ·
-  <a href="https://exitliquid.fun/state">State of vibe</a> ·
+  <a href="https://exitliquid.fun/methodology">How grades work</a> ·
+  <a href="https://exitliquid.fun/state">Market</a> ·
   <a href="https://x.com/exitliqfun">X</a>
 </p>
 
 ---
 
-Charts show price. They don't show **people**. Every token on vibe/vibe is a line of real holders walking toward the same door: graduation into a Uniswap V4 pool. exitliquid.fun reads that line straight from the chain and tells you who stands in it: snipers, bundles, the dev's bag, real volume and how close the door is. It shows **signals, not verdicts**.
+Charts show price. They don't show **people**. Every token on vibe/vibe is a line of real holders walking toward the same door: graduation into a Uniswap V4 pool. exitliquid.fun reads that line straight from the chain and tells you who stands in it: snipers, bundles, the dev's bag, real volume and how close the door is. Every token gets one A–F grade with the facts behind it.
 
 <p align="center">
   <img src="docs/screenshots/home.png" alt="Departures board" width="49%">
@@ -29,22 +29,22 @@ Charts show price. They don't show **people**. Every token on vibe/vibe is a lin
 
 | | What you get |
 |---|---|
-| **Line Health** | A–F grade for the front of the line: known snipers and farm groups among the first 20 buyers, dev sells, early walk-outs. |
+| **One grade** | A–F for every token: snipers among the first buyers, dev bag and sells, top-10 share, real volume, the dev's past launches. What wasn't checked caps the grade instead of counting as clean. |
+| **The line** | Every holder as a pixel trader queued to the EXIT door, snipers, farms and bundles marked on the people themselves. Click anyone for their ticket. |
+| **Rankings** | The cleanest tokens right now and the worst red flags, re-checked every few minutes. |
 | **Bundle check** | Supply bought in the same transaction or block, launch-block and first-minute buyers, shared funders, with tx links as proof. |
 | **Who's selling to you** | How much of the line sits in profit (1×, 2×, 3×+), the price if they all sold now, break-even after fees, price impact by size. |
 | **Real volume** | Volume without wash trades and bots, buys per buyer, bot share over 1h / 24h / all time. |
 | **Holders** | Top 10 without pool and plumbing, gifted vs bought supply, fresh wallets, funding clusters. |
 | **Wallet profiles** | Any address: positions with cost and PnL, early entries, sniper / farm / dev tags, who funded it. |
-| **Dev passport** | Every launch by a creator, how many graduated, whether and how fast they sold, linked wallets. |
-| **Graduation watch** | Tokens close to the door with live progress and ETA, plus what happened right after graduation. |
-| **State of vibe** | Launchpad-wide stats: launches and graduations per day, time to the door, sniper share, top volume. |
+| **Dev history** | On the wallet page: every launch by a creator, how many graduated, whether the dev sold. |
+| **Market** | Launchpad-wide stats: launches and graduations per day, time to the door, sniper share, top volume. |
 | **Share cards** | One-click pixel cards for any token, wallet or dev, ready to post. |
 
 Every analytics view is open to everyone, with no wallet and no token required.
 
 <p align="center">
-  <img src="docs/screenshots/door.png" alt="Graduation watch" width="49%">
-  <img src="docs/screenshots/state.png" alt="State of vibe" width="49%">
+  <img src="docs/screenshots/state.png" alt="Market" width="49%">
 </p>
 
 ## How it works
@@ -52,7 +52,7 @@ Every analytics view is open to everyone, with no wallet and no token required.
 - **Chain first.** Holders, entries, sells and bundles are rebuilt from Robinhood Chain logs (bonding-curve and Uniswap V4 events). The vibe/vibe API is used for lists and metadata, Blockscout for wallet history and funders.
 - **Early Index.** An hourly job reads the first buyers of every launch over the last 7 days and labels wallets that keep entering first without beating chance (snipers) or that keep entering together (farm groups).
 - **Unknown is never zero.** If a source doesn't answer, the site says so and shows "—" with a reason. It never shows a clean 0.
-- Details for every number: [exitliquid.fun/methodology](https://exitliquid.fun/methodology).
+- How the grade is built: [exitliquid.fun/methodology](https://exitliquid.fun/methodology).
 
 ## Tech
 
@@ -70,7 +70,7 @@ npm run dev                  # http://localhost:3000
 
 ## Disclaimer
 
-Independent community project on the vibe/vibe testnet. Not affiliated with vibe/vibe or Robinhood Markets. Testnet tokens have no value. Nothing here is financial advice: these are signals, not verdicts.
+Independent community project on the vibe/vibe testnet. Not affiliated with vibe/vibe or Robinhood Markets. Testnet tokens have no value. Nothing here is financial advice.
 
 ## License
 

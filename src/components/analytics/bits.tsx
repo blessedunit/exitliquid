@@ -5,6 +5,8 @@
 import type { ReactNode } from "react";
 import { EXPLORER } from "@/lib/config";
 import { ageShort, useNow, type AnalyticsState } from "./useTokenAnalytics";
+import Unreadable from "@/components/token/Unreadable";
+import Loader from "@/components/ui/Loader";
 import { CardHead } from "@/components/ui/CardHead";
 import type { GlossaryId } from "@/lib/glossary";
 import ProfileLink from "../ProfileLink";
@@ -55,20 +57,12 @@ export function Card({ id, title, term, sub, src, stale = false, loading = false
 
 /** The card body while there is no data: loading, trouble, or the section's own reason. */
 export function Pending({ state, reason, reading = "Reading the first 100 buys…" }: { state: AnalyticsState; reason?: string | null; reading?: string }) {
+  if (state.trouble === "failed") return <Unreadable failed={state.failed} className={s.msg} />;
   if (state.trouble === "loading") {
-    // the shape of a loaded card (hero number, a line, a stat grid), pulsing: the card keeps its height
-    return (
-      <div className={s.skel} role="status" aria-label={reading}>
-        <i className={s.skBig} /><i className={s.skLine} />
-        <div className={s.skGrid}><i /><i /><i /></div>
-        <i className={s.skLine} /><i className={s.skLine} />
-      </div>
-    );
+    // the card keeps its height (data-loading min-height); the walkers say "on its way", not "empty"
+    return <Loader caption={reading} />;
   }
-  const text = state.trouble === "rate" || state.trouble === "down"
-    ? "Retrying… Unknown, not zero."
-    : reason || "Unknown right now. Unknown, not zero.";
-  return <p className={s.msg} role="status">{text}</p>;
+  return <p className={s.msg} role="status">{reason || "Unknown, not zero."}</p>;
 }
 
 /** A partial-read note under a card (the source and age now sit in the head). Nothing when there is no reason. */

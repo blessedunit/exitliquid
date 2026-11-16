@@ -1,7 +1,8 @@
 // All vibe/vibe launches, from the vibe/vibe public API (list, sort, search).
 // The list is a directory only: every number on a /line/<token> page is read from the chain.
 import "server-only";
-import { CHAIN_ID } from "./config";
+import { CHAIN_ID, EXIT_TOKEN, IS_LIVE } from "./config";
+import { pairSymbol } from "./pairs";
 import { beat } from "./beacon";
 
 export type LaunchTab = "new" | "hot" | "door" | "grad";
@@ -36,7 +37,8 @@ export type LaunchCard = {
   /** walking to the door but stalled: no buys in the last hour, draining, or the last hour far slower than the day */
   etaStalled: boolean;
   /** v6 factory launch (taxed token, not in /launches): its line lite is /line/<token> (read from vibe/vibe) */
-  v6: { taxBps: number; pair: string } | null;
+  /** taxBps: null = vibe didn't report it (unknown, never 0) */
+  v6: { taxBps: number | null; pair: string } | null;
   /** creator's description (trimmed, control chars removed, <=280 chars); null = none given */
   description: string | null;
   /** creator's links, validated (https only / x.com / t.me); null = none given */
@@ -87,12 +89,14 @@ async function api<T>(path: string, revalidate: number, timeout = 8_000): Promis
 // short memo: the directory is shared by everyone browsing it; callers asking at the same time share one call
 const memo = new Map<string, { at: number; v: unknown }>();
 const running = new Map<string, Promise<unknown>>();
+const MEMO_HARD_MS = 30_000;
 async function memoized<T>(key: string, ttlMs: number, run: () => Promise<T>): Promise<T> {
   const hit = memo.get(key);
   if (hit && Date.now() - hit.at < ttlMs) return hit.v as T;
   const busy = running.get(key);
   if (busy) return busy as Promise<T>;
-  const p = run()
+  // hard cap: a fetch that never settles would hand the same dead promise to every caller of this key forever
+  const p = Promise.race([run(), new Promise<never>((_, rej) => setTimeout(() => rej(new Error("directory timeout")), MEMO_HARD_MS))])
     .then((v) => {
       if (memo.size > 400) memo.clear();
       memo.set(key, { at: Date.now(), v });
@@ -249,7 +253,7 @@ const lastGood = new Map<string, { at: number; v: { items: LaunchCard[]; next: s
 type V6Item = {
   tokenAddress: string; curveAddress?: string; launcherAddress?: string; name?: string; symbol?: string; createdAt?: string;
   content?: ApiContent; moderation?: { visibility?: string };
-  pairIsNative?: boolean; pairSymbol?: string | null; targetPairUnits?: string; taxBps?: number;
+  pairCurrencyAddress?: string; pairIsNative?: boolean; pairSymbol?: string | null; targetPairUnits?: string; taxBps?: number;
   lifecycle?: string; graduated?: boolean;
   curve?: { pairReserveUnits?: string };
   market?: { holderCount?: number; volume24hPairUnits?: string; buyCount24h?: number; sellCount24h?: number; priceChange1hBps?: number | string | null };
@@ -289,7 +293,7 @@ function v6Card(x: V6Item): LaunchCard {
     netRaisedEth: native ? wei(String(reserve)) : null,
     etaHours: null,
     etaStalled: false,
-    v6: { taxBps: Math.max(0, Number(x.taxBps ?? 0)), pair: native ? "ETH" : String(x.pairSymbol || "token").slice(0, 12) },
+    v6: { taxBps: ((v) => (v === null ? null : Math.max(0, v)))(num(x.taxBps)), pair: native ? "ETH" : (pairSymbol(x.pairSymbol, x.pairCurrencyAddress) ?? "token") },
     description: cleanDescription(x.content?.description),
     socials: cleanSocials(x.content?.socials),
   };
@@ -387,7 +391,7 @@ async function prefixSearch(prefix: string, revalidate = 15): Promise<{ items: L
   const got = await Promise.allSettled([
     v1Page("hot", "", null, 24, revalidate),
     v1Page("new", "", null, 24, revalidate),
-    within(v1Page("door", "", null, 24, revalidate), 2_500, late).then((v) => {
+    within(v1Page("door", "", null, DOOR_MAX, revalidate), 2_500, late).then((v) => {
       if (v === late) throw late;
       return v as Awaited<ReturnType<typeof v1Page>>;
     }),
@@ -415,6 +419,8 @@ function unpackMixed(c: string | null): Mixed | null {
   }
 }
 
+const DOOR_MAX = 100; // vibe answers 400 above limit=100
+
 /** One page of launches. Throws when the vibe API does not answer (the caller says "unknown", never "none"). */
 export async function launchPage(tab: LaunchTab, q: string, cursor: string | null, limit = 24, revalidate = 15): Promise<LaunchPage> {
   const lq = q.trim().toLowerCase();
@@ -424,12 +430,22 @@ export async function launchPage(tab: LaunchTab, q: string, cursor: string | nul
     return { items: await withEta(p.items), next: null, asOfBlock: null, v6: p.v6 };
   }
   const mixed = tab === "new" || (tab === "hot" && !!q);
+  if (tab === "door" && !q) {
+    // vibe's cursor on sort=PROGRESS_DESC answers 409 at once, even right after page 1 (checked 16.10): read one
+    // list of 100 (vibe's max, one cache key for every page) and page through it with our own "o.<offset>"
+    const off = cursor?.startsWith("o.") ? Math.max(0, Math.min(DOOR_MAX, parseInt(cursor.slice(2), 10) || 0)) : 0;
+    const p = await v1Page(tab, "", null, DOOR_MAX, revalidate);
+    const end = off + limit;
+    return { items: await withEta(p.items.slice(off, end), true), next: end < p.items.length ? `o.${end}` : null, asOfBlock: p.asOfBlock, v6: "off" };
+  }
   if (!mixed) {
     const p = await v1Page(tab, q, cursor, limit, revalidate);
     const items = q && !cursor ? pinExact(p.items, q) : p.items;
     return { items: await withEta(items, tab === "door"), next: p.next, asOfBlock: p.asOfBlock, v6: "off" };
   }
-  const m = unpackMixed(cursor) ?? { a: null, b: null, da: false, db: false };
+  // the v1 index froze on 29.09: on a plain New list its rows sat right under the fresh v6 ones and pushed
+  // half of the last hour's launches to page 2 (audit 15.10). v1 stays for searches (old tokens by name).
+  const m = unpackMixed(cursor) ?? { a: null, b: null, da: tab === "new" && !q, db: false };
   const [ra, rb] = await Promise.allSettled([
     m.da ? Promise.resolve(null) : v1Page(tab, q, m.a, limit, revalidate),
     m.db ? Promise.resolve(null) : v6Page(q, m.b, limit, revalidate),
@@ -439,7 +455,7 @@ export async function launchPage(tab: LaunchTab, q: string, cursor: string | nul
   const b = rb.status === "fulfilled" ? rb.value : null;
   let items = [...(a?.items ?? []), ...(b?.items ?? [])];
   if (tab === "new" || q) items.sort((x, y) => y.createdAt - x.createdAt);
-  if (q && !cursor) items = pinExact(items, q);
+  if (q && !cursor) items = withOwn(pinExact(items, q), await ownCard(q).catch(() => null));
   // New: young lines rarely have an ETA, and two vibe calls already took ~1.3 s; a short ETA wait keeps the
   // server render under its 3 s cap (the rest land in the memo for the next poll)
   items = await withEta(items, false, tab === "new" ? 700 : ETA_BUDGET_MS);
@@ -551,6 +567,22 @@ const slim = (c: LaunchCard): Suggestion => ({
  * text search shares its cache entries with the board's own search (same query strings).
  * Throws when vibe does not answer at all (the caller shows "unknown", never "no match").
  */
+/**
+ * "$EXIT" / "exit liquidity" must find the site's own token first. Text search only covers vibe's listings,
+ * and the legacy $EXIT is not in them, so its clones (same ticker, even the same name) came up instead (audit 15.10).
+ */
+const OWN_Q = /^(exit|exit ?liq(uidity)?)$/;
+async function ownCard(q: string): Promise<LaunchCard | null> {
+  if (!IS_LIVE || !OWN_Q.test(q.replace(/^\$/, "").trim().toLowerCase())) return null;
+  return memoized(`own:${EXIT_TOKEN}`, 60_000, async () => {
+    const j = await api<{ data?: ApiItem }>(`/launches/${EXIT_TOKEN}`, 300, 3_000);
+    return j.data ? toCard(j.data) : null;
+  });
+}
+function withOwn(items: LaunchCard[], own: LaunchCard | null): LaunchCard[] {
+  return own ? [own, ...items.filter((c) => c.token !== own.token)] : items;
+}
+
 export async function searchSuggest(raw: string): Promise<SuggestResult> {
   const q = raw.replace(/^\$/, "").trim().slice(0, 64);
   const lq = q.toLowerCase();
@@ -573,10 +605,10 @@ export async function searchSuggest(raw: string): Promise<SuggestResult> {
     const p = await prefixSearch(lq);
     return { items: p.items.slice(0, 6).map(slim), more: p.items.length > 6, kind: "prefix" };
   }
-  const [a, b] = await Promise.allSettled([v1Page("new", q, null, 24, 15), v6Page(q, null, 24, 15)]);
+  const [a, b, own] = await Promise.allSettled([v1Page("new", q, null, 24, 15), v6Page(q, null, 24, 15), ownCard(q)]);
   if (a.status === "rejected" && b.status === "rejected") throw a.reason;
   const all = [...(a.status === "fulfilled" ? a.value.items : []), ...(b.status === "fulfilled" ? b.value.items : [])].sort((x, y) => y.createdAt - x.createdAt);
-  const items = pinExact(all, q);
+  const items = withOwn(pinExact(all, q), own.status === "fulfilled" ? own.value : null);
   return { items: items.slice(0, 6).map(slim), more: items.length > 6, kind: "text" };
 }
 
@@ -588,7 +620,50 @@ export async function searchSuggest(raw: string): Promise<SuggestResult> {
  * (a price holds until the next trade). Empty x = no trade in the window (a real "no trades",
  * vibe reports full coverage); a token missing from the map = unknown.
  */
-export type Spark = { x: number[]; y: number[]; chgBps: number | null };
+export type Spark = {
+  x: number[]; y: number[]; chgBps: number | null;
+  /** v6 rows only (read from the same candles): the window is the token's whole life when it is under 24 h */
+  life?: boolean;
+  /** trades in the window (v6); under 2 = too early for a line ("new") */
+  trades?: number;
+  /** last hour from 1m/5m candles (v6): ETH volume (null = not an ETH pair), buys, sells */
+  vol1hEth?: number | null; buys1h?: number; sells1h?: number;
+  /** the same line over the last hour only (the board's 1h view); trades = trades inside that hour (v6) */
+  h1?: { x: number[]; y: number[]; chgBps: number | null; life?: boolean; trades?: number } | null;
+};
+
+const H1_POINTS = 32;
+
+/** The last hour of a price series (sorted by time): the price standing at the hour's start, then every point
+ *  inside it, held to `to`. A token with no trade before or inside the hour has no line (empty). */
+function hourLine(pts: { t: number; p: number }[], to: number, trades?: number): NonNullable<Spark["h1"]> {
+  const from = to - 3600;
+  let before: { t: number; p: number } | null = null;
+  const inside: { t: number; p: number }[] = [];
+  for (const q of pts) {
+    if (q.t <= from) before = q;
+    else if (q.t <= to) inside.push(q);
+  }
+  if (!before && !inside.length) return { x: [], y: [], chgBps: null, trades };
+  const start = before ? from : inside[0].t;
+  const span = Math.max(60, to - start);
+  const thin = new Map<number, { t: number; p: number }>();
+  for (const q of inside) thin.set(Math.min(H1_POINTS - 1, Math.max(0, Math.floor(((q.t - start) / span) * H1_POINTS))), q);
+  const head = before ? { t: from, p: before.p } : inside[0];
+  const kept = [head, ...[...thin.values()].filter((q) => q !== head)];
+  const last = kept[kept.length - 1];
+  const series = [...kept, { t: to, p: last.p }];
+  const ps = series.map((q) => q.p);
+  const min = Math.min(...ps);
+  const max = Math.max(...ps);
+  return {
+    x: series.map((q) => Math.round(Math.min(1000, Math.max(0, ((q.t - start) / span) * 1000)))),
+    y: series.map((q) => (max === min ? 500 : Math.round(((q.p - min) / (max - min)) * 1000))),
+    chgBps: Math.round((last.p / head.p - 1) * 10_000),
+    life: !before,
+    trades,
+  };
+}
 
 type ApiSpark = { data?: { from?: string; toExclusive?: string; tokens?: Record<string, { times?: unknown; closes?: unknown }> } };
 
@@ -604,7 +679,7 @@ function toSpark(times: unknown, closes: unknown, from: number, to: number): Spa
     if (Number.isFinite(t) && Number.isFinite(p) && p > 0) pts.push({ t, p });
   }
   if (pts.length !== times.length) return null; // a malformed series is unknown, not flat
-  if (!pts.length) return { x: [], y: [], chgBps: null };
+  if (!pts.length) return { x: [], y: [], chgBps: null, h1: { x: [], y: [], chgBps: null } };
   pts.sort((a, b) => a.t - b.t);
   // thin to at most SPARK_POINTS buckets (last close of each), then carry the last close to "now"
   const span = Math.max(1, to - from);
@@ -619,7 +694,7 @@ function toSpark(times: unknown, closes: unknown, from: number, to: number): Spa
   const x = series.map((q) => Math.round(Math.min(1000, Math.max(0, ((q.t - from) / span) * 1000))));
   const y = series.map((q) => (max === min ? 500 : Math.round(((q.p - min) / (max - min)) * 1000)));
   const first = pts[0].p;
-  return { x, y, chgBps: Math.round((last.p / first - 1) * 10_000) };
+  return { x, y, chgBps: Math.round((last.p / first - 1) * 10_000), h1: hourLine(pts, to) };
 }
 
 /** 24 h price sparklines for up to 120 tokens (at most 2 upstream calls). Throws when vibe does not answer at all. */
@@ -650,4 +725,99 @@ export async function sparklines(tokens: string[]): Promise<Record<string, Spark
     }
   }
   return out;
+}
+
+/* ---------------- v6 price lines (/v6/launches/<token>/candles: one call per token, no batch) ---------------- */
+// vibe's batched /sparklines and /candles answer an EMPTY series for every v6 token (checked 15.10: 24/24 empty
+// while /v6/launches/<t>/candles had trades), so a v6 line costs one call per token: ~0.3-1.2 s cold, ~1.5 KB.
+// They run 6 at a time, sit in the data cache and the memo for 60 s, and the route never waits past its budget
+// (a slow token is left out = unknown, and lands in the memo for the next ask).
+
+type ApiCandle = {
+  bucketStart?: string; bucketEnd?: string;
+  openPriceWeiPerToken?: string | null; closePriceWeiPerToken?: string | null; volumeWei?: string | null;
+  openPriceQuoteBaseUnitsPerToken?: string | null; closePriceQuoteBaseUnitsPerToken?: string | null;
+  tradeCount?: number; buyCount?: number; sellCount?: number;
+};
+type ApiCandles = { data?: { from?: string; toExclusive?: string; denomination?: string; items?: ApiCandle[] } };
+
+export type V6SparkAsk = { token: string; /** candle size: 1m for a token under 2 h, 5m after */ iv: "1m" | "5m" };
+const V6_SPARK_PAR = 6;
+
+function v6Spark(j: ApiCandles): Spark | null {
+  const d = j.data;
+  const from = Date.parse(d?.from ?? "") / 1000;
+  const to = Date.parse(d?.toExclusive ?? "") / 1000;
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to <= from || !Array.isArray(d?.items)) return null;
+  const native = d.denomination !== "QUOTE";
+  const pts: { t: number; p: number }[] = [];
+  let trades = 0, buys1h = 0, sells1h = 0, vol1h = 0n, bad = false;
+  const hourAgo = to - 3600;
+  for (const c of d.items) {
+    const t0 = Date.parse(c.bucketStart ?? "") / 1000;
+    const t1 = Math.min(to, Date.parse(c.bucketEnd ?? "") / 1000);
+    const o = native ? c.openPriceWeiPerToken : c.openPriceQuoteBaseUnitsPerToken;
+    const cl = native ? c.closePriceWeiPerToken : c.closePriceQuoteBaseUnitsPerToken;
+    if (!Number.isFinite(t0) || !Number.isFinite(t1) || !isInt(o) || !isInt(cl) || o === "0" || cl === "0") {
+      bad = true;
+      continue;
+    }
+    pts.push({ t: t0, p: Number(o) }, { t: Math.max(t0, t1 - 1), p: Number(cl) });
+    trades += Number(c.tradeCount ?? 0) || 0;
+    // a candle that ends inside the last hour counts in it (1m/5m candles: at most 5 min of edge)
+    if (t1 > hourAgo) {
+      buys1h += Number(c.buyCount ?? 0) || 0;
+      sells1h += Number(c.sellCount ?? 0) || 0;
+      if (native && isInt(c.volumeWei)) vol1h += BigInt(c.volumeWei);
+    }
+  }
+  if (bad && !pts.length) return null; // all malformed: unknown, not flat
+  const life = pts.length > 0 && pts[0].t > from + 900; // the first trade is well inside the window: the line is the whole life
+  const extra = { life, trades, buys1h, sells1h, vol1hEth: native ? Number(vol1h / 10n ** 9n) / 1e9 : null };
+  if (!pts.length) return { x: [], y: [], chgBps: null, ...extra, h1: { x: [], y: [], chgBps: null, trades: 0 } };
+  pts.sort((a, b) => a.t - b.t);
+  // the line starts at the first trade (a young token fills the whole width), and the last close holds until now
+  const start = life ? pts[0].t : from;
+  const span = Math.max(60, to - start);
+  const thin = new Map<number, { t: number; p: number }>();
+  for (const q of pts) thin.set(Math.min(SPARK_POINTS - 1, Math.max(0, Math.floor(((q.t - start) / span) * SPARK_POINTS))), q);
+  const kept = [...thin.values()];
+  if (kept[0] !== pts[0]) kept.unshift(pts[0]); // keep the very first price: the change is measured from it
+  const last = pts[pts.length - 1];
+  const series = [...kept, { t: to, p: last.p }];
+  const ps = series.map((q) => q.p);
+  const min = Math.min(...ps);
+  const max = Math.max(...ps);
+  return {
+    x: series.map((q) => Math.round(Math.min(1000, Math.max(0, ((q.t - start) / span) * 1000)))),
+    y: series.map((q) => (max === min ? 500 : Math.round(((q.p - min) / (max - min)) * 1000))),
+    chgBps: Math.round((last.p / pts[0].p - 1) * 10_000),
+    ...extra,
+    h1: hourLine(pts, to, buys1h + sells1h),
+  };
+}
+
+/** price lines for v6 tokens (up to 48), within budgetMs; a token missing from the result is unknown right now. */
+export async function v6Sparklines(asks: V6SparkAsk[], budgetMs = 4_500): Promise<Record<string, Spark>> {
+  const seen = new Set<string>();
+  const list = asks
+    .map((a) => ({ token: a.token.toLowerCase(), iv: a.iv === "1m" ? ("1m" as const) : ("5m" as const) }))
+    .filter((a) => FULL_ADDR.test(a.token) && !seen.has(a.token) && !!seen.add(a.token))
+    .slice(0, 48);
+  const out: Record<string, Spark> = {};
+  let i = 0;
+  const one = (a: V6SparkAsk) =>
+    memoized(`v6spark:${a.iv}:${a.token}`, 60_000, () => api<ApiCandles>(`/v6/launches/${a.token}/candles?interval=${a.iv}`, 60, 6_000)).then((j) => {
+      const s = v6Spark(j);
+      if (s) out[a.token] = s;
+    });
+  const worker = async () => {
+    while (i < list.length) {
+      const a = list[i++];
+      await one(a).catch(() => {}); // that token stays unknown
+    }
+  };
+  const all = Promise.all(Array.from({ length: Math.min(V6_SPARK_PAR, list.length) }, worker));
+  await within(all, budgetMs, null); // what came back in time; the rest keeps filling the memo
+  return { ...out };
 }

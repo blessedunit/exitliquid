@@ -10,6 +10,7 @@ import HowStrip from "./HowStrip";
 import DevBadge from "./DevBadge";
 import type { LineInfo, TokenAbout } from "@/lib/lineContext";
 import { shortAddr } from "@/lib/format";
+import { shimmer } from "./ui/Loader";
 import styles from "./TokenHead.module.css";
 
 type Props = {
@@ -47,8 +48,8 @@ export default function TokenHead({ token, info, age = null, loading = false, ac
               {status}
             </div>
             <p className={styles.lede}>
-              Every $EXIT holder, in buy order. Buy <b>0.0003 ETH</b> or more to take a place, and every buyer
-              behind you adds a point. Sell, and your points pass down the line.
+              Every $EXIT holder, in buy order. Buy <b>0.0003 ETH</b> or more to take a place. Sell, and
+              everyone behind you moves up.
             </p>
             <div className={styles.guide}><HowStrip variant="link" /></div>
           </div>
@@ -82,14 +83,14 @@ export default function TokenHead({ token, info, age = null, loading = false, ac
               {symbol ? (
                 <h1 className={styles.sym}>${symbol}</h1>
               ) : loading ? (
-                <h1 className={styles.sym}><span className={styles.skel} aria-label="Loading token" /></h1>
+                <h1 className={styles.sym}><span className={`${styles.skel} ${shimmer}`} aria-label="Loading token" /></h1>
               ) : (
                 <h1 className={`${styles.sym} ${styles.addrTitle}`}>{shortAddr(token)}</h1>
               )}
               {status}
             </div>
             <div className={styles.sub}>
-              {meta ? <span className={styles.meta}>{meta}</span> : loading ? <span className={`${styles.skel} ${styles.skelSm}`} aria-hidden /> : null}
+              {meta ? <span className={styles.meta}>{meta}</span> : loading ? <span className={`${styles.skel} ${styles.skelSm} ${shimmer}`} aria-hidden /> : null}
               <button type="button" className={styles.chip} onClick={copy} title="Copy contract address" aria-label={copied ? "Contract address copied" : `Copy contract address ${token}`}>
                 <span>{shortAddr(token)}</span>
                 <PixelIcon name={copied ? "check" : "copy"} size={12} />

@@ -7,7 +7,7 @@ import dynamic from "next/dynamic";
 import { Component, useCallback, useEffect, useState, type ReactNode } from "react";
 import { setWalletBridge, type WalletBridge } from "@/lib/wallet";
 
-const APP_ID = (process.env.NEXT_PUBLIC_PRIVY_APP_ID || "").trim();
+const APP_ID = (process.env.NEXT_PUBLIC_PRIVY_APP_ID || "cmumniqih008d0cl2r26ndzaz").trim(); // public id, see next.config.ts
 const PrivyLayer = dynamic(() => import("./PrivyLayer"), { ssr: false });
 
 let real: WalletBridge | null = null;

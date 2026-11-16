@@ -1,4 +1,4 @@
-/* The line page ($EXIT on /exit, /line/<token>): header, SummaryBar, sticky section tabs, then the sections
+/* The line page ($EXIT on /exit, /line/<token>): header, verdict, sticky section tabs, then the sections
    Line (corridor + tape | ticket), Risk, Holders, Selling, Dev. Spec 3.2: no boxes but the corridor stage and the
    ticket; sections on one 64 px beat with a hairline on top; h2 + one meta lead per section. */
 .hero { padding-top: 48px; padding-bottom: 96px; }
@@ -51,8 +51,10 @@ details.share { position: relative; flex: 0 0 auto; }
 .corridorBox > div { flex: none; width: 100%; height: 160px; max-height: none !important; }
 
 .shadowCrowd { position: absolute; right: 190px; bottom: 19.4%; display: flex; align-items: flex-end; gap: 8px; pointer-events: none; }
-.shadowCrowd img { height: 48px; width: auto; filter: brightness(0) invert(.25); opacity: .5; animation: shadowPulse 1.4s steps(2) infinite; }
-@keyframes shadowPulse { 50% { opacity: .25; } }
+.shadowCrowd img { height: 48px; width: auto; filter: brightness(0) invert(.25); opacity: .5; animation: shadowStep .9s steps(2) infinite; }
+/* waiting shadows shuffle in place (a pixel bob, the same walk as the site loader), no flicker */
+@keyframes shadowStep { 50% { transform: translateY(-2px); } }
+@media (prefers-reduced-motion: reduce) { .shadowCrowd img { animation: none; } }
 
 /* under the stage: the range on the left, paging arrows on the right (ghost, 40 px) */
 .corrFoot { display: flex; align-items: center; gap: 12px; min-height: 48px; padding: 4px 0 0; }
@@ -145,3 +147,21 @@ details.share { position: relative; flex: 0 0 auto; }
   .shadowCrowd img { animation: none; }
   .stickyCta { transition: none; }
 }
+
+/* ---------- 17.11 layout: verdict, the line right under it, one row of figures, the sections, trades + holders ---------- */
+.lineTop { margin-top: 32px; min-width: 0; scroll-margin-top: calc(var(--hdr-h) + 24px); }
+.corrFoot { align-items: flex-start; min-height: 0; }
+.corrFoot > * { flex: 1 1 auto; min-width: 0; }
+.pager { align-items: center; gap: 4px 8px; }
+.pager .range { margin-right: 4px; }
+.passSlot { max-width: 440px; margin-top: 8px; }
+.bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: start; margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); }
+.bottom.solo { grid-template-columns: minmax(0, 1fr); }
+@media (max-width: 1100px) { .bottom { grid-template-columns: minmax(0, 1fr); gap: 40px; } }
+@media (max-width: 760px) {
+  .lineTop { margin-top: 24px; }
+  .passSlot { max-width: none; }
+  .bottom { margin-top: 36px; }
+  .phoneActions { margin-top: 20px; }
+}
+section.lineTop { padding: 0; }

@@ -3,7 +3,8 @@
 // kept for a year: an IPFS file never changes), and the launch list warms its pictures in the background.
 import "server-only";
 
-const GATEWAYS = ["https://gateway.pinata.cloud/ipfs/", "https://ipfs.io/ipfs/", "https://dweb.link/ipfs/", "https://w3s.link/ipfs/"];
+// filebase: the only public gateway that still answers Cloudflare Workers (the others give 429 there, checked 15.10)
+const GATEWAYS = ["https://gateway.pinata.cloud/ipfs/", "https://ipfs.io/ipfs/", "https://dweb.link/ipfs/", "https://w3s.link/ipfs/", "https://ipfs.filebase.io/ipfs/"];
 const MAX_BYTES = 1_900_000; // the data cache keeps items up to ~2 MB
 const TYPES = /^image\/(png|jpe?g|gif|webp|avif|svg\+xml)$/;
 const YEAR = 31_536_000;

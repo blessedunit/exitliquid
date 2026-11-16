@@ -40,7 +40,7 @@ export default async function Image({ params }: { params: Promise<{ address: str
     : exited
       ? `${t!.exit!.behindAtExit.toLocaleString("en-US")} people moved up. thanks for the liquidity.`
       : "every ponzi needs exit liquidity";
-  const rank = e ? (t?.tierName ?? "") : exited ? "Ghost" : "";
+  const rank = e ? (t?.tierName ?? "") : exited ? "Walked out" : "";
 
   return new ImageResponse(
     (
@@ -86,7 +86,11 @@ export default async function Image({ params }: { params: Promise<{ address: str
               borderLeft: `6px dashed ${OG.text}`,
             }}
           >
-            <OgImg s={sprite} opacity={exited ? 0.55 : 1} />
+            {exited && !e ? (
+              <div style={{ display: "flex", width: sprite.w, height: sprite.h, border: `4px dashed ${OG.faint}` }} />
+            ) : (
+              <OgImg s={sprite} />
+            )}
             <div style={{ fontFamily: "Pixel", fontSize: 21, color: "#fff", marginTop: 18 }}>THANKS FOR THE</div>
             <div style={{ fontFamily: "Pixel", fontSize: 21, color: "#fff" }}>LIQUIDITY</div>
           </div>

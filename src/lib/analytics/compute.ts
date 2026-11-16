@@ -3,16 +3,26 @@
 import { curveBuyCost } from "@/lib/queue";
 import type { RawTransfer } from "@/lib/chain";
 import type { QueueEntry } from "@/lib/queue";
+import { POOL_MANAGER } from "@/lib/factories";
 import { FEE, breakEven, buyOut, feesOnlyPct, pctMove, sellOut, tokensForGross, type Reserves } from "./cpmm";
 import type { Bucket, Bundle, BundleGroup, ExitMath, Impact, Supply, SupplyRow, TopTrader, Volume, VolWindow, WalletTag } from "./types";
 
 export const ZERO = "0x0000000000000000000000000000000000000000";
 export const DEAD = "0x000000000000000000000000000000000000dead";
-export const POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
 export const UNIVERSAL_ROUTER = "0x8876789976decbfcbbbe364623c63652db8c0904";
 /** fallback only: the engine measures s/block on the chain (engine.secPerBlock); 0.165-0.183 seen 24.09-01.10 */
 export const BLOCK_SEC = 0.165;
+/** dust: a trade under this is wash, a buy under it bundles nothing. In ETH. A pair quoted in another token
+ *  (NVDA, USDG, VIBEVIBE...) gets its own threshold from the engine (dustFor), never this number of its units. */
 export const MICRO_ETH = 0.0001;
+/** The dust threshold in the pair's own unit: 1/1000 of the pair's first impact size. That size is 0.1 ETH on an
+ *  ETH pair (so ETH pairs keep exactly 0.0001) and the same step of a token pair's own reserve scale (v6market
+ *  sizesFor), so "dust" means the same fraction of the pool whatever the quote token. null = scale unknown
+ *  (market unread on a token pair): nothing is called dust, and volume() says so (Volume.dust = null). */
+export function dustFor(native: boolean, firstImpactSize: number | null): number | null {
+  if (native) return MICRO_ETH;
+  return firstImpactSize !== null && firstImpactSize > 0 ? firstImpactSize / 1000 : null;
+}
 const ROUND_TRIP_BLOCKS = 2;
 const BUNDLE_SCAN = 100;
 
@@ -180,10 +190,11 @@ function group<K, V>(m: Map<K, V[]>, k: K, v: V) {
 const BLOCK_MIN_WALLETS = 3;
 const BLOCK_MIN_PCT = 0.5;
 
-export function bundle(legs: Leg[], bk: Book, creator: string, createdBlock: number, supply: number, cluster: Map<string, number> | null, checked: Set<string>, startKnown = true): Bundle {
+export function bundle(legs: Leg[], bk: Book, creator: string, createdBlock: number, supply: number, cluster: Map<string, number> | null, checked: Set<string>, startKnown = true, dust: number | null = MICRO_ETH): Bundle {
   const allBuys = legs.filter((l) => l.side === "buy").slice(0, BUNDLE_SCAN);
-  // dust buys (< 0.0001 ETH) bundle nothing: four dust wallets holding 0.01% made a "BUNDLE" chip
-  const buys = allBuys.filter((l) => l.eth === null || l.eth >= MICRO_ETH);
+  // dust buys (< 0.0001 ETH, or the pair's own threshold) bundle nothing: four dust wallets holding 0.01% made a
+  // "BUNDLE" chip. Threshold unknown: every buy counts (a bundle is never hidden by an unknown)
+  const buys = allBuys.filter((l) => l.eth === null || dust === null || l.eth >= dust);
   const byTx = new Map<string, Leg[]>();
   const byBlock = new Map<number, Leg[]>();
   for (const l of buys) {
@@ -284,11 +295,16 @@ const BREAK_EVEN_SIZE = 0.1;
 export function exitMath(
   line: QueueEntry[],
   bk: Book,
-  m: { venue: "curve" | "pool"; spotEth: number; reserves: Reserves; realEthReserve: number | null; tokensLeft: number | null },
+  m: { venue: "curve" | "pool"; spotEth: number; reserves: Reserves; realEthReserve: number | null; tokensLeft: number | null; fee?: number },
   supply: number,
   quotes: Quotes | null,
+  /** v6 (taxed) lines: the impact sizes and the break-even size in pair units; v1 keeps the ETH defaults */
+  sizes: number[] = IMPACT_SIZES,
+  beSize: number = BREAK_EVEN_SIZE,
 ): ExitMath & { profitTokensExact: number } {
   const spot = m.spotEth;
+  // per-side cost: vibe's 1.25% on v1, the token's tax on v6 (the caller passes it)
+  const fee = m.fee ?? FEE;
   const buckets = BUCKETS.map((b) => ({ id: b.id, label: b.label, holders: 0, tokens: 0, supplyPct: 0, linePct: 0 }));
   let lineTokens = 0;
   let exact = 0;
@@ -320,7 +336,7 @@ export function exitMath(
     const k = buckets[b < 0 ? 3 : b];
     k.holders++;
     k.tokens += tokens;
-    if (mult * (1 - FEE) > 1) {
+    if (mult * (1 - fee) > 1) {
       profitHolders++;
       profitTokens += tokens;
     }
@@ -335,13 +351,17 @@ export function exitMath(
   let dumpPricePct: number | null = null;
   let dumpEthOut: number | null = null;
   let dumpNote: string | null = null;
-  if (profitTokens > 0) {
-    const s = sellOut(m.reserves, profitTokens);
+  // bags with a known cost: only they can be in profit or not. None priced = the whole block is unknown
+  const priced = exact + estimated;
+  if (priced === 0) {
+    dumpNote = "No bag in line has a known cost.";
+  } else if (profitTokens > 0) {
+    const s = sellOut(m.reserves, profitTokens, fee);
     dumpPricePct = r2(pctMove(m.reserves, s.after));
     dumpEthOut = quotes?.dump ?? s.net;
     if (m.venue === "curve" && m.realEthReserve !== null && s.gross > m.realEthReserve + 1e-9) {
       dumpNote = `The curve holds ${m.realEthReserve.toFixed(3)} ETH: it can't pay out more.`;
-      dumpEthOut = m.realEthReserve * (1 - FEE);
+      dumpEthOut = m.realEthReserve * (1 - fee);
     }
   } else {
     dumpPricePct = 0;
@@ -349,9 +369,9 @@ export function exitMath(
     dumpNote = "Nobody in line is in profit after fees.";
   }
 
-  const be = breakEven(m.reserves, BREAK_EVEN_SIZE);
-  const impact: Impact[] = IMPACT_SIZES.map((eth, i) => {
-    const model = buyOut(m.reserves, eth);
+  const be = breakEven(m.reserves, beSize, fee);
+  const impact: Impact[] = sizes.map((eth, i) => {
+    const model = buyOut(m.reserves, eth, fee);
     const q = quotes?.buy[i] ?? null;
     let buyTokens: number | null = q ?? model.tokens;
     let note: string | null = null;
@@ -363,7 +383,7 @@ export function exitMath(
     }
     const buyImpactPct = buyTokens ? r2(((eth / buyTokens) / m.spotEth - 1) * 100) : null;
     let sellTokens = tokensForGross(m.reserves, eth);
-    let sellPriceAfterPct: number | null = sellTokens === null ? null : r2(pctMove(m.reserves, sellOut(m.reserves, sellTokens).after));
+    let sellPriceAfterPct: number | null = sellTokens === null ? null : r2(pctMove(m.reserves, sellOut(m.reserves, sellTokens, fee).after));
     if (m.venue === "curve" && m.realEthReserve !== null && eth > m.realEthReserve) {
       sellTokens = null;
       sellPriceAfterPct = null;
@@ -385,11 +405,11 @@ export function exitMath(
   let maxSell10: ExitMath["maxSell10"] = null;
   if (m.reserves.t > 0 && m.reserves.e > 0) {
     const dx = m.reserves.t * (1 / Math.sqrt(0.9) - 1);
-    const s = sellOut(m.reserves, dx);
+    const s = sellOut(m.reserves, dx, fee);
     let eth = s.net;
     let capped = false;
     if (m.venue === "curve" && m.realEthReserve !== null && s.gross > m.realEthReserve) {
-      eth = m.realEthReserve * (1 - FEE);
+      eth = m.realEthReserve * (1 - fee);
       capped = true;
     }
     maxSell10 = { tokens: Math.round(dx), eth: r4(eth), capped };
@@ -407,14 +427,15 @@ export function exitMath(
     profitHolders,
     profitTokens: Math.round(profitTokens),
     profitTokensExact: profitTokens,
-    profitSupplyPct: r2(supply > 0 ? (profitTokens / supply) * 100 : 0),
+    // bags of unknown cost are in neither side of the share: not "in profit", not "the rest of the supply"
+    profitSupplyPct: priced > 0 && supply - noCostTokens > 0 ? r2((profitTokens / (supply - noCostTokens)) * 100) : null,
     dumpPricePct,
     dumpEthOut: dumpEthOut === null ? null : r4(dumpEthOut),
     dumpNote,
     breakEvenPct: r2(be.risePct),
     breakEvenEth: r4(be.othersEth),
-    breakEvenSize: BREAK_EVEN_SIZE,
-    feesOnlyPct: r2(feesOnlyPct()),
+    breakEvenSize: beSize,
+    feesOnlyPct: r2(feesOnlyPct(fee)),
     impact,
     maxSell10,
   };
@@ -426,7 +447,9 @@ export function exitMath(
  * `since` = first block of each window ("1h", "24h"), measured on the chain (engine.windowStart);
  * without it the windows fall back to the interpolated log timestamps.
  */
-export function volume(legs: Leg[], nowSec: number, labels: { sniper: Set<string>; farm: Set<string> } | null, since?: { h1: number; d1: number } | null): Volume {
+export function volume(legs: Leg[], nowSec: number, labels: { sniper: Set<string>; farm: Set<string> } | null, since?: { h1: number; d1: number } | null, dust: number | null = MICRO_ETH): Volume {
+  // dust in the pair's own unit (dustFor); null = the pair's scale is unknown, no trade is called dust
+  const isDust = (l: Leg) => dust !== null && l.eth !== null && l.eth < dust;
   // wash, part 2: one wallet in and out (either order) within 2 blocks
   const wash = new Set<Leg>();
   const byWallet = new Map<string, Leg[]>();
@@ -439,7 +462,7 @@ export function volume(legs: Leg[], nowSec: number, labels: { sniper: Set<string
       }
     }
   }
-  for (const l of legs) if (roundTrip.has(l) || (l.eth !== null && l.eth < MICRO_ETH)) wash.add(l);
+  for (const l of legs) if (roundTrip.has(l) || isDust(l)) wash.add(l);
 
   const windows: VolWindow[] = ([["1h", 3600], ["24h", 86_400], ["all", Infinity]] as const).map(([label, sec]) => {
     const from = since ? (label === "1h" ? since.h1 : label === "24h" ? since.d1 : 0) : null;
@@ -452,7 +475,7 @@ export function volume(legs: Leg[], nowSec: number, labels: { sniper: Set<string
       if (l.eth === null) { unknown++; continue; }
       volumeEth += l.eth;
       if (wash.has(l)) washEth += l.eth;
-      if (l.eth < MICRO_ETH) micro++;
+      if (isDust(l)) micro++;
       if (roundTrip.has(l)) trips++;
       // a bot's dust or round trip is already wash: counted there once, never twice
       if (!wash.has(l) && labels && (labels.sniper.has(l.wallet) || labels.farm.has(l.wallet))) botEth += l.eth;
@@ -497,7 +520,7 @@ export function volume(legs: Leg[], nowSec: number, labels: { sniper: Set<string
       tag: labels?.sniper.has(wallet) ? "sniper" : labels?.farm.has(wallet) ? "farm" : null,
     }));
   const venues = new Set(legs.map((l) => l.venue));
-  return { venue: venues.size === 2 ? "both" : venues.has("pool") ? "pool" : "curve", windows, topTraders, topTradersWindow, labelsAsOf: null };
+  return { venue: venues.size === 2 ? "both" : venues.has("pool") ? "pool" : "curve", windows, topTraders, topTradersWindow, labelsAsOf: null, dust };
 }
 
 /* ---------------- 4. supply ---------------- */
@@ -612,4 +635,20 @@ export function walletTags(legs: Leg[], bk: Book, creator: string, labels: { sni
     if (g > 0 && g >= b) out[w] = "gifted";
   }
   return out;
+}
+
+/**
+ * % of the dev's own bag sold into the curve / pool, whole history: sold / (sold + still held + moved to other
+ * wallets). `reserved` = tokens still sitting in the dev's wallet for a v6 gift list (not the dev's own bag).
+ * null when the dev never held any of the token.
+ */
+export function devSoldPct(legs: Leg[], bk: Book, creator: string, reserved = 0): number | null {
+  if (!creator) return null;
+  let sold = 0;
+  for (const l of legs) if (l.wallet === creator && l.side === "sell") sold += l.tokens;
+  const held = Math.max(0, (bk.balance.get(creator) ?? 0) - reserved);
+  const moved = bk.gaveTokens.get(creator) ?? 0;
+  const base = sold + held + moved;
+  if (!(base > 0)) return null;
+  return Math.round((Math.min(sold, base) / base) * 1000) / 10;
 }

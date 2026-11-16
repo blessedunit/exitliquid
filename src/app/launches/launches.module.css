@@ -74,7 +74,7 @@
 .board { position: relative; display: grid; }
 .row {
   position: relative; display: grid; align-items: center; column-gap: 16px; min-height: 56px; padding: 8px 0;
-  grid-template-columns: 24px minmax(0, 1fr) 144px 168px 76px 112px 124px 72px 40px;
+  grid-template-columns: 24px minmax(0, 1fr) 128px 168px 76px 112px 72px 40px;
   border-bottom: 1px solid var(--line); transition: background .12s;
 }
 .row:not(.head):not(.ghost):hover { background: var(--s2); }
@@ -133,29 +133,6 @@
 .s_down { color: var(--down); }
 .s_stall { color: var(--t1); }
 
-/* the Grade cell: a Mono letter, then the worst flag as a chip */
-.cSig { min-width: 0; display: flex; align-items: center; }
-.sig { display: inline-flex; align-items: center; gap: 12px; min-width: 0; }
-.sigIn { animation: sigIn .45s ease-out both; }
-@keyframes sigIn { from { opacity: 0; } }
-.gr { flex: none; min-width: 14px; font: 400 16px/20px var(--f-num); color: var(--t1); }
-.grade_good { color: var(--exit); }
-.grade_plain { color: var(--t1); }
-.grade_bad { color: var(--down); }
-.grPartial { color: var(--t3); }
-.grNone { color: var(--t3); }
-.grEarly { flex: none; font: 400 13px/20px var(--f-ui); color: var(--t3); }
-.grLoad { width: 24px; }
-/* chips (spec §1.6): a 6 px square + plain text, no frame, no fill */
-.chips { display: flex; min-width: 0; }
-.chip { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; font: 400 13px/20px var(--f-ui); color: var(--t2); white-space: nowrap; text-overflow: ellipsis; }
-.chip i { flex: none; width: 6px; height: 6px; }
-.chipText { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.sq_bad { background: var(--down); }
-.sq_warn { background: var(--t1); }
-.sq_plain { background: var(--t3); }
-.sq_good { background: var(--exit); }
-
 /* TO GRAD: a thin bar with the door tick and the %, the ETA under it */
 .cDoor { display: grid; gap: 4px; min-width: 0; }
 .doorTop { display: flex; align-items: center; gap: 12px; }
@@ -169,11 +146,12 @@
 .grad { display: inline-flex; align-items: center; gap: 8px; font: 400 13px/20px var(--f-ui); color: var(--t2); }
 .grad i { width: 6px; height: 6px; background: var(--exit); }
 
-/* 24H: the line, the 1h % beside it */
-.cSpark { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
+/* PRICE: the line (24 h, or since launch), its % beside it; "new" when there is no line yet */
+.cSpark { display: flex; align-items: center; justify-content: flex-end; gap: 8px; min-width: 0; }
 .cSpark .spark { width: 56px; height: 16px; }
-.noSpark { width: 56px; text-align: center; }
-.chg { min-width: 48px; text-align: right; font: 400 12px/16px var(--f-num); font-variant-numeric: tabular-nums; }
+.chg { min-width: 52px; text-align: right; font: 400 12px/16px var(--f-num); font-variant-numeric: tabular-nums; }
+.chgWait { color: var(--t3); }
+.pNew { font: 400 12px/16px var(--f-ui); color: var(--t3); }
 
 .cBs { position: relative; }
 .bs { display: inline-flex; gap: 4px; }
@@ -200,40 +178,16 @@
 .fine a { color: var(--t2); }
 .fine a:hover { color: var(--exit); }
 
-/* ---------- How to read: one popover panel ---------- */
-.how { width: min(600px, calc(100vw - 32px)); max-height: min(80vh, 640px); overflow: auto; margin: auto; padding: 24px; border: 1px solid var(--line-2); background: var(--s1); color: var(--t1); }
-.how::backdrop { background: rgb(0 0 0 / .55); }
-.howHead { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: -8px -12px 16px 0; }
-.howHead h3 { margin: 0; font: 600 15px/22px var(--f-ui); }
-.howHead .ghostBtn { width: 40px; padding: 0; font-size: 20px; }
-.legendList { display: grid; gap: 16px; margin: 0; }
-.legendList div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 16px; }
-.legendList dt { font: 600 14px/20px var(--f-ui); color: var(--t1); }
-.legendList dd { margin: 0; font: 400 14px/20px var(--f-ui); color: var(--t2); }
-.keyList { display: grid; gap: 8px; margin: 24px 0 0; padding-top: 16px; border-top: 1px solid var(--line); }
-.keyList div { display: grid; grid-template-columns: 120px 1fr; gap: 16px; align-items: center; }
-.keyList dt { font: 400 12px/1 var(--f-num); color: var(--t3); }
-.keyList dd { margin: 0; font: 400 13px/20px var(--f-ui); color: var(--t2); }
-.keyList kbd { display: inline-block; min-width: 20px; padding: 3px 5px; border: 1px solid var(--line-2); color: var(--t1); font: 400 11px/1 var(--f-num); text-align: center; }
-@media not all and (pointer: fine) { .keysOnly { display: none; } }
-
 /* ---------- widths ---------- */
 @media (max-width: 1180px) {
-  .row { grid-template-columns: 24px minmax(0, 1fr) 84px 160px 76px 104px 124px 72px 40px; }
-  /* narrow: the worst flag stays, as a muted 12px line under the letter (never a bare grade) */
-  .sig { flex-direction: column; align-items: flex-start; gap: 0; max-width: 100%; }
-  .chips { max-width: 100%; }
-  .chip { gap: 6px; font-size: 12px; line-height: 16px; color: var(--t3); }
-  .head .cSig .th, .head .cSig { overflow: visible; }
+  .row { grid-template-columns: 24px minmax(0, 1fr) 124px 160px 76px 104px 72px 40px; }
 }
 @media (max-width: 1040px) {
-  .row { grid-template-columns: minmax(0, 1fr) 84px 160px 104px 124px 72px 40px; }
+  .row { grid-template-columns: minmax(0, 1fr) 124px 160px 104px 72px 40px; }
   .cRank, .cIn { display: none !important; }
 }
 @media (max-width: 900px) {
-  .row { grid-template-columns: minmax(0, 1fr) 80px 140px 96px 56px 64px 40px; column-gap: 12px; }
-  .cSpark .spark, .noSpark { display: none; }
-  .howBtn { display: none; }
+  .row { grid-template-columns: minmax(0, 1fr) 120px 132px 88px 64px 40px; column-gap: 12px; }
 }
 
 /* ---------- phone: three lines per row, the head hidden (Sort lives in the toolbar) ---------- */
@@ -251,28 +205,25 @@
   .head { display: none; }
   .row {
     grid-template-columns: 40px minmax(0, 1fr) auto;
-    grid-template-areas: "tok tok sig" ". door door" ". mob star";
+    grid-template-areas: "tok tok spark" ". door door" ". mob star";
     column-gap: 0; row-gap: 6px; min-height: 0; padding: 14px 0 10px;
   }
-  .cRank, .cIn, .cVol, .cSpark, .cBs { display: none !important; }
+  .cRank, .cIn, .cVol, .cBs { display: none !important; }
   .cTok { grid-area: tok; }
   .tok { gap: 12px; }
-  .cSig { grid-area: sig; justify-self: end; padding-left: 12px; max-width: 120px; }
-  .sig { align-items: flex-end; }
+  .cSpark { grid-area: spark; justify-self: end; padding: 0 2px 0 12px; }
   .cDoor { grid-area: door; display: flex; align-items: center; gap: 8px; }
   .doorTop { flex: 0 1 220px; min-width: 0; gap: 8px; }
   .pct { min-width: 0; }
   .grad { font-size: 13px; }
-  .cMob { grid-area: mob; display: block; align-self: center; min-width: 0; font: 400 12px/16px var(--f-ui); color: var(--t2); }
+  .cMob { grid-area: mob; display: block; align-self: center; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font: 400 12px/16px var(--f-ui); color: var(--t2); }
   .cStar { grid-area: star; margin: -8px -8px -8px 0; }
   .star { width: 44px; height: 40px; }
   .stub { grid-template-areas: "tok tok star"; }
   .stub .cStar { margin: 0; }
-  .ghost { min-height: 92px; grid-template-areas: "tok tok sig" ". door door" ". door door"; }
+  .ghost { min-height: 92px; grid-template-areas: "tok tok spark" ". door door" ". door door"; }
   .ghost .cStar { display: none; }
   .empty { min-height: 200px; }
-  .how { padding: 16px; }
-  .legendList div { grid-template-columns: minmax(0, 1fr); gap: 2px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -280,15 +231,14 @@
   .row { transition: none; }
 }
 
-/* ---------- loading: skeleton bars, one slow pulse (spec §1.8) ---------- */
+/* ---------- loading: skeleton bars, Loader's shimmer (spec §1.8) ---------- */
 .boarding { display: contents; }
 .ghost { background: transparent; animation: ghostIn .25s ease-out both; }
 @keyframes ghostIn { from { opacity: 0; } }
-.gBar { display: block; height: 10px; background: var(--s2); animation: pulse 1.2s ease-in-out infinite; }
-@keyframes pulse { 50% { opacity: .45; } }
+.gBar { display: block; height: 10px; }
 .gSmall { height: 8px; }
 .gTok { display: flex; align-items: center; gap: 12px; min-width: 0; }
-.gAv { width: 28px; height: 28px; flex: none; background: var(--s2); }
+.gAv { width: 28px; height: 28px; flex: none; }
 .gNames { display: grid; gap: 8px; flex: 1; max-width: 180px; }
 .gNum { justify-self: end; width: 56%; margin-left: auto; }
 /* rows arrive softly instead of popping in */
@@ -301,3 +251,8 @@
 @media (prefers-reduced-motion: reduce) {
   .fresh .row:not(.head):not(.ghost) { animation: none !important; }
 }
+
+/* home: the board's own visible title under the checker boards; the screener's worst reason in amber */
+.homeTitle { margin: 0; padding: 8px 0 4px; font: 700 15px/20px var(--f-px); text-transform: uppercase; letter-spacing: .02em; color: var(--t1); }
+.hiWarn { color: #f2b84b; }
+.tok > span:first-child[aria-label] { flex: none; }

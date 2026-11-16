@@ -1,0 +1,101 @@
+/* Screener rows and boards (home checker + Rankings). One label style (Mono 11 uppercase --t3), one value style
+   (Departure Mono), one muted note. Colour only carries the verdict: green clean, amber caution, red risk. */
+.tGood { --tone: var(--exit); --tone-bg: rgba(61, 220, 132, .12); }
+.tWarn { --tone: #f2b84b; --tone-bg: rgba(242, 184, 75, .12); }
+.tBad { --tone: var(--down); --tone-bg: rgba(240, 97, 109, .13); }
+.tNone { --tone: var(--t3); --tone-bg: var(--s2); }
+
+/* ---------- grade badge: a pixel square with the letter ---------- */
+.badge {
+  display: inline-grid; place-items: center; flex: none; color: var(--tone); background: var(--tone-bg);
+  box-shadow: inset 0 0 0 2px var(--tone); clip-path: var(--notch);
+  font: 700 16px/1 var(--f-px); text-transform: uppercase;
+}
+.badge_sm { width: 24px; height: 24px; font-size: 12px; }
+.badge_md { width: 34px; height: 34px; font-size: 16px; }
+.badge_lg { width: 56px; height: 56px; font-size: 28px; box-shadow: inset 0 0 0 3px var(--tone); }
+.tNone.badge { box-shadow: inset 0 0 0 1px var(--line-2); font-family: var(--f-num); font-weight: 400; }
+
+.verdict { color: var(--tone); font: 500 12px/16px var(--f-ui); white-space: nowrap; }
+
+/* ---------- the row ---------- */
+.row {
+  position: relative; display: grid; align-items: center; column-gap: 12px; min-width: 0;
+  padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--t1); text-decoration: none !important;
+  transition: background .12s;
+}
+a.row:hover { background: var(--s2); }
+a.row:focus-visible { outline: 2px solid var(--exit); outline-offset: -2px; }
+
+/* wide (Rankings): one line per token */
+.wide {
+  grid-template-columns: 24px 34px minmax(170px, 230px) minmax(0, 1fr) 104px 64px 72px 72px;
+  min-height: 64px; padding: 10px 8px;
+}
+
+.cRank { font: 400 12px/16px var(--f-num); color: var(--t3); font-variant-numeric: tabular-nums; }
+.cGrade { display: flex; }
+.cTok { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.names { display: grid; gap: 2px; min-width: 0; }
+.tickLine { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.tick { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 600 14px/20px var(--f-ui); color: var(--t1); }
+.name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12px/16px var(--f-ui); color: var(--t3); }
+
+.cWhy { display: flex; flex-wrap: wrap; gap: 2px 14px; min-width: 0; }
+.reason { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font: 400 13px/18px var(--f-ui); color: var(--t2); }
+.reason i { flex: none; width: 6px; height: 6px; background: var(--tone); }
+.reason span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reasonNone { font: 400 13px/18px var(--f-ui); color: var(--t3); }
+
+.cMetric { display: grid; justify-items: end; gap: 0; text-align: right; }
+.cMetric b { font: 400 16px/20px var(--f-num); font-variant-numeric: tabular-nums; color: var(--tone, var(--t1)); white-space: nowrap; }
+.cMetric small { font: 400 11px/14px var(--f-ui); color: var(--t3); white-space: nowrap; }
+
+.cNum { display: grid; justify-items: end; min-width: 0; overflow: hidden; text-align: right; font: 400 13px/18px var(--f-num); font-variant-numeric: tabular-nums; color: var(--t1); white-space: nowrap; }
+.cNum b { font: 400 13px/18px var(--f-num); color: var(--t1); }
+.cNum small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font: 400 10px/14px var(--f-num); letter-spacing: .04em; text-transform: uppercase; color: var(--t3); }
+.cHold { color: var(--t2); }
+
+/* the table head (Rankings) */
+.head { min-height: 36px; padding-top: 0; padding-bottom: 0; }
+.th { font: 400 11px/16px var(--f-num); letter-spacing: .06em; text-transform: uppercase; color: var(--t3); white-space: nowrap; }
+.thR { text-align: right; }
+
+/* ---------- skeleton ---------- */
+.skel { pointer-events: none; }
+.skBadge, .skAv, .skBar { display: block; }
+.skBadge { width: 34px; height: 34px; }
+.skAv { width: 28px; height: 28px; flex: none; }
+.skBar { height: 10px; }
+
+
+/* ---------- phone ---------- */
+@media (max-width: 1040px) {
+  .wide { grid-template-columns: 24px 34px minmax(150px, 200px) minmax(0, 1fr) 96px 72px 72px; }
+  .wide .cHold, .wide .thHold { display: none; }
+}
+@media (max-width: 760px) {
+  .wide {
+    grid-template-columns: 34px minmax(0, 1fr) auto;
+    grid-template-areas: "grade tok metric" "grade why why";
+    row-gap: 6px; column-gap: 10px; padding: 12px 0;
+  }
+  .wide .cRank, .wide .cHold, .wide .cMc, .wide .cVol { display: none; }
+  .wide .cGrade { grid-area: grade; align-self: start; }
+  .wide .cTok { grid-area: tok; }
+  .wide .cWhy { grid-area: why; }
+  .wide .cMetric { grid-area: metric; align-self: start; }
+  .wide .name { display: none; }
+  .head { display: none; }
+  .reason { font-size: 12px; line-height: 17px; }
+}
+
+/* ---------- what the letters mean ---------- */
+.tNone.badge { color: var(--t2); }
+.scale { display: grid; gap: 10px; }
+.scaleList { display: flex; flex-wrap: wrap; gap: 8px 20px; margin: 0; padding: 0; list-style: none; }
+.scaleList li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.scaleList b { margin-left: 2px; color: var(--t1); font: 500 13px/16px var(--f-ui); }
+@media (max-width: 640px) {
+  .scaleList { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
+}

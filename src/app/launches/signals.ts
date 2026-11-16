@@ -148,7 +148,11 @@ export function chipsFor(c: Card, s: TokenSignal | null): Chip[] {
     farm: s?.farm ?? null,
     firstBuyers: s?.firstBuyers ?? null,
   }).map(({ rank, text, tone, title }) => ({ rank, text, tone, title }));
-  if (c.v6) out.push({ rank: 5, text: `TAX ${pctBps(c.v6.taxBps)}`, tone: "plain", title: `Taxed v6 launch: ${pctBps(c.v6.taxBps)} on every trade, paired with ${c.v6.pair}.` });
+  if (c.v6) {
+    // unknown tax is a dash, never 0%
+    const tax = c.v6.taxBps === null ? null : pctBps(c.v6.taxBps);
+    out.push({ rank: 5, text: `TAX ${tax ?? "—"}`, tone: "plain", title: `Taxed v6 launch: ${tax === null ? "tax unknown" : `${tax} on every trade`}, paired with ${c.v6.pair}.` });
+  }
   return out
     .sort((a, b) => a.rank - b.rank)
     .slice(0, 2)
@@ -164,7 +168,7 @@ export function sigTitle(s: TokenSignal): string {
   else parts.push("No warning signs at the front.");
   if (s.dev?.holdsBps !== null && s.dev?.holdsBps !== undefined) parts.push(s.dev.holdsBps > 0 ? `Dev holds ${pctBps(s.dev.holdsBps)} of supply.` : "Dev holds none.");
   if (s.partial) parts.push("Partial: some inputs couldn't be read.");
-  parts.push("Signals, not verdicts. Full check on the line.");
+  parts.push("Full check on the line.");
   return parts.join(" ");
 }
 

@@ -17,7 +17,7 @@ import { parseAbi, type Address, type Hex } from "viem";
 import { CHAIN_ID } from "./config";
 import { cachedCreation, client, cleanText, launchLog, recentWalletLogs, v6LaunchCreation, ZERO } from "./chain";
 import { addressTransfers } from "./blockscout";
-import { PLUMBING } from "./service";
+import { PLUMBING, PLUMBING_NAMES as CONTRACT_NAMES, POOL_MANAGER } from "./factories";
 import { BoundedTtlMap } from "./bounded";
 import { devReputation, type DevRep } from "./devrep";
 import { scanWallet } from "./lines";
@@ -25,30 +25,14 @@ import { earlyIndex, perIndex } from "@/lib/earlyIndex";
 
 
 const VIBE = `https://testnet.vibevibe.fun/api/v1/chains/${CHAIN_ID}`;
-const VIBE_HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.fun", "user-agent": "Mozilla/5.0" };
+const VIBE_HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.fun", "user-agent": "exitliquid.fun (read-only directory)" };
 const EXPLORER = "https://explorer.testnet.chain.robinhood.com";
 const EXPLORER_HEADERS = { accept: "application/json", "user-agent": "Mozilla/5.0" };
 
 const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" as Hex;
-const POOL_MANAGER = "0x8366a39cc670b4001a1121b8f6a443a643e40951";
 const FAUCET = "0x8762f93772c663c6a88ba50900bd5381df2717be"; // the public testnet faucet contract
 const PLUMBING_SET = new Set<string>(PLUMBING);
-const PLUMBING_NAMES: Record<string, string> = {
-  "0x40f1be6faf8dab9c143cce1a0a04c2075fb2df59": "vibe/vibe factory",
-  "0xb5b7a2f6c4eafa2d73918fca32d50e2126339eb9": "vibe/vibe legacy factory",
-  "0xa6a5d4c098da8f79eae1203a8e42ff9ac7a17f06": "graduation adapter",
-  "0x2779651fee12f6fb5a187578de6b63709f85d0cc": "fee hook",
-  "0xc0a2deebdc40b7083dc9a067f6992f884fb6074d": "liquidity locker",
-  "0x91719a47f855079678b3d5e3af69cde2b830c5c9": "protocol treasury",
-  "0x8366a39cc670b4001a1121b8f6a443a643e40951": "Uniswap V4 pool manager",
-  "0x8876789976decbfcbbbe364623c63652db8c0904": "universal router",
-  "0x000000000022d473030f116ddee9f6b43ac78ba3": "Permit2",
-  "0x000000000000000000000000000000000000dead": "burn address",
-  "0x0d0c44bfeb2a60f9b81c221c4cd24ca89acbacec": "legacy liquidity locker",
-  "0x1ed9e88ae14713ca4bc964bade2bc1e3f5cd501a": "legacy graduation adapter",
-  "0xc5b22f31f247a6ee33592792d44bde31c0ef10cc": "legacy fee hook",
-  [FAUCET]: "public testnet faucet",
-};
+const PLUMBING_NAMES: Record<string, string> = { ...CONTRACT_NAMES, [FAUCET]: "public testnet faucet" };
 // Arbitrum-style chains: an L1 deposit arrives from the sender's L1 address + this offset
 const ALIAS_OFFSET = 0x1111000000000000000000000000000000001111n;
 const aliasOf = (a: string) => `0x${((BigInt(a) + ALIAS_OFFSET) % (1n << 160n)).toString(16).padStart(40, "0")}`;
@@ -881,6 +865,8 @@ export type DevSection = {
   launches: { token: string; symbol: string; createdAt: number; progressBps: number; graduated: boolean; hidden: boolean; taxed?: boolean }[];
   /** "v1-only" = vibe's taxed v6 list did not answer: v6 launches are unknown, not absent */
   coverage: "full" | "v1-only" | null;
+  /** launches counted on the factories when that is above vibe's list; null = not above, or unknown */
+  onChain: number | null;
 };
 
 export type WalletProfile = {
@@ -900,7 +886,7 @@ export type WalletProfile = {
 };
 
 function devSection(rep: DevRep | null, reason: string | null): DevSection {
-  if (!rep) return { status: "unavailable", reason: reason ?? "vibe/vibe didn't answer", total: null, loaded: 0, graduated: null, launches: [], coverage: null };
+  if (!rep) return { status: "unavailable", reason: reason ?? "vibe/vibe didn't answer", total: null, loaded: 0, graduated: null, launches: [], coverage: null, onChain: null };
   return {
     status: "ok",
     reason: rep.total !== null && rep.total > rep.loaded ? `newest ${rep.loaded} of ${rep.total} loaded` : null,
@@ -909,6 +895,7 @@ function devSection(rep: DevRep | null, reason: string | null): DevSection {
     graduated: rep.graduated,
     launches: rep.launches.slice(0, 12).map((l) => ({ ...l, symbol: cleanText(l.symbol, 16) })),
     coverage: rep.coverage,
+    onChain: rep.onChain?.launches ?? null,
   };
 }
 
@@ -1061,8 +1048,6 @@ export type EntriesResponse = {
   updatedAt: number;
 };
 
-const FACTORIES = ["0x40f1be6faf8dab9c143cce1a0a04c2075fb2df59", "0xb5b7a2f6c4eafa2d73918fca32d50e2126339eb9", "0x4febc267e0c24440bcdef72b5dbc5fe7bed091df"]; // main, legacy, first (lib/chain)
-const LAUNCH_CREATED = "0x56eef5c350583250e71791d6d659f4d181796c9deb08b977252efc3995aa9279" as Hex;
 
 type LaunchInfo = { block: number; curve: string; creator: string } | null; // null = no factory launched it
 type LaunchWindow = { buyers: { wallet: string; block: number }[]; end: number; capped: boolean };

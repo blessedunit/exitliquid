@@ -1,6 +1,8 @@
 "use client";
-// One composition for every line: header, the summary (grade, reading line, KPIs, chips), sticky section tabs,
-// then Line (corridor + tape | ticket), Risk, Holders, Exit and Dev. Two columns of cards at 1100+, one below.
+// One composition for every line (the same as a v6 line, V6Line.tsx): header, the verdict, the LINE (the corridor
+// with the front's sniper / bundle marks and the first buyers who sold drawn faded, one caption, the ticket of the
+// person picked), one row of key figures, the sections (Dev, Holders, Volume, Profit, one "All details" fold),
+// then Trades and Top holders at the bottom.
 // token = null shows $EXIT (/exit); any other vibe/vibe token gets the same line on /line/<token>.
 import Link from "next/link";
 import dynamic from "next/dynamic";
@@ -13,10 +15,12 @@ import CtaLink from "./CtaLink";
 import ShareCard from "./ShareCard";
 import TokenHead from "./TokenHead";
 import TopHolders from "./TopHolders";
-import HealthCard, { FirstBuyersCard, useHealth } from "./HealthCard";
-import SummaryBar, { type SummaryKpis } from "./analytics/SummaryBar";
-import DevMini from "./analytics/DevMini";
-import SectionTabs from "./ui/SectionTabs";
+import { FirstBuyersCard, useHealth } from "./HealthCard";
+import Unreadable from "./token/Unreadable";
+import { Verdict, ReportSections, Figures, FrontCaption, readFront, type MarketItem } from "./token/Report";
+import { readVerdict } from "./token/verdict";
+import { trackRecord, useDevPassport } from "./token/useDevPassport";
+import rp from "./token/Report.module.css";
 import { useTokenAnalytics } from "./analytics/useTokenAnalytics";
 import an from "./analytics/analytics.module.css";
 import styles from "./LiveHero.module.css";
@@ -24,7 +28,9 @@ import { useQueue } from "@/lib/useLive";
 import { LineProvider, type LineInfo, type TokenAbout } from "@/lib/lineContext";
 import { ACTIVE_TOKEN, IS_LIVE } from "@/lib/config";
 import { fmtEth, fmtInt } from "@/lib/format";
-import type { QueueResponse, WireEntry } from "@/lib/types";
+import { skinOf } from "@/app/w/skin";
+import type { WireEntry } from "@/lib/types";
+import type { QueueResponse } from "@/lib/types";
 
 // "You are here": the wallet this visitor typed or connected on My Lines (never a shared ?w= link).
 // Read through useSyncExternalStore: storage can throw (private mode, blocked site data) and is absent on the server.
@@ -62,12 +68,35 @@ const TRADES_SENT = 300;
 // $EXIT before launch: the CTA stays on-site ("Get in line" -> /lines), so it must not say "Buy"
 const EXIT_CTA = IS_LIVE ? "Buy $EXIT" : undefined;
 
-type Flow = { vol24: number | null; buys1h: number | null; sells1h: number | null };
+type Flow = { vol24: number | null };
 
-/** Volume and trade counts from the tape, only when the tape really covers the window (unknown ≠ zero). */
+/** the numbers of the market strip under the verdict; null = unknown, drawn as "—", never 0 */
+type MarketKpis = {
+  mcapEth: number | null;
+  mcapTitle: string;
+  change1hBps: number | null;
+  vol24Eth: number | null;
+  /** "vibe" = vibe/vibe's own 24 h figure (the tape didn't cover the day) */
+  vol24Src: "tape" | "vibe" | null;
+  holders: number | null;
+  /** curve progress 0-100; null = unknown */
+  gradPct: number | null;
+  graduated: boolean;
+  etaHours: number | null;
+  etaStalled: boolean;
+};
+
+/** the board's ETA wording: ~<1h, ~6h, ~3d, ~30d+ */
+function etaText(h: number): string {
+  if (h < 1) return "~<1h";
+  if (h < 48) return `~${Math.round(h)}h`;
+  if (h < 24 * 30) return `~${Math.round(h / 24)}d`;
+  return "~30d+";
+}
+
+/** 24 h volume from the tape, only when the tape really covers the day (unknown ≠ zero). */
 function flowOf(data: QueueResponse | null): Flow {
-  const none = { vol24: null, buys1h: null, sells1h: null };
-  if (!data || data.unavailable || !data.updatedAt) return none;
+  if (!data || data.unavailable || !data.updatedAt) return { vol24: null };
   const trades = data.trades ?? [];
   const now = data.updatedAt / 1000;
   const whole = trades.length < TRADES_SENT;
@@ -83,26 +112,13 @@ function flowOf(data: QueueResponse | null): Flow {
       vol24 += eth;
     }
   }
-  if (!covers(3_600)) return { vol24, buys1h: null, sells1h: null };
-  const hour = trades.filter((t) => t.ts >= now - 3_600);
-  const buys1h = hour.filter((t) => t.side === "buy").length;
-  return { vol24, buys1h, sells1h: hour.length - buys1h };
+  return { vol24 };
 }
 
 // The analytics cards sit below the fold: their code loads after the page (and never on /exit before launch).
 // Placeholders keep the loaded cards' height, so nothing jumps when the chunk lands.
 const CardHold = () => <section className={an.card} data-loading aria-hidden />;
 const Cards = dynamic(() => import("./analytics/AnalyticsCards"), { ssr: false, loading: () => <CardHold /> });
-
-/** the page's sections, in order (the sticky tabs and the section heads read from here) */
-const SECTIONS = [
-  { id: "line", label: "Line", lead: "Every holder, queued by first buy. Tap a person or a trade." },
-  { id: "risk", label: "Risk", lead: "Who stands at the front: snipers, farms, bundled buys." },
-  { id: "holders", label: "Holders", lead: "Who holds the supply, and how it got there." },
-  { id: "exit", label: "Selling", lead: "How much selling the price can take, and how much of the volume is real." },
-  { id: "dev", label: "Dev", lead: "The creator's record and other launches with this ticker." },
-] as const;
-type SectionId = (typeof SECTIONS)[number]["id"];
 
 function ageText(seconds: number) {
   if (seconds < 3600) return `${Math.max(1, Math.floor(seconds / 60))}m`;
@@ -130,7 +146,7 @@ type HeroProps = {
 };
 
 export default function LiveHero({ token = null, info: serverInfo = null, createdAt = null, holders = null, about = null, vol24Vibe = null, notVibeHint = false, change1hBps = null, etaHours = null, etaStalled = false }: HeroProps) {
-  const { data, error } = useQueue(20_000, 1_000, token);
+  const { data, error, failed: queueFailed } = useQueue(20_000, 1_000, token);
   // launchInfo() on the server can miss (vibe API slow): fall back to the queue's own name and symbol
   const liveData = data && (!token || data.token?.toLowerCase() === token) ? data : null;
   const info = useMemo<LineInfo | null>(() => {
@@ -148,7 +164,7 @@ export default function LiveHero({ token = null, info: serverInfo = null, create
   const me = useSyncExternalStore(subscribeMe, readMe, () => null);
   const narrow = useSyncExternalStore(subscribeNarrow, readNarrow, () => false);
 
-  const line = useMemo(() => data?.line ?? [], [data?.line]);
+  const realLine = useMemo(() => data?.line ?? [], [data?.line]);
   const unknown = !data || !!data.unavailable;
   const lineUnknown = !!data?.unavailable || (!data && !!error);
   // not a vibe/vibe launch: a final answer, so no corridor, tape, X-ray or Buy button for it
@@ -156,11 +172,50 @@ export default function LiveHero({ token = null, info: serverInfo = null, create
   const notVibe = (error === "not_vibe" || notVibeHint) && !data;
   const inLine = data?.totals.inLine ?? 0;
   const progress = data?.curve.progressBps ?? 0;
-  const mine = me ? line.find((e) => e.wallet === me) : undefined;
-  const selected = selectedWallet ? line.find((e) => e.wallet === selectedWallet) : undefined;
+  const mine = me ? realLine.find((e) => e.wallet === me) : undefined;
+  const selected = selectedWallet ? realLine.find((e) => e.wallet === selectedWallet) : undefined;
   const selectedTrade = selectedWallet ? [...(data?.trades ?? [])].reverse().find((t) => t.wallet === selectedWallet) : undefined;
   const flow = useMemo(() => flowOf(data), [data]);
-  const places = useMemo(() => new Map(line.map((e) => [e.wallet, e.place])), [line]);
+  const places = useMemo(() => new Map(realLine.map((e) => [e.wallet, e.place])), [realLine]);
+
+  // Line Health: the page's token, or on /exit the live $EXIT (demo token before launch; never mock data)
+  const healthToken = token ?? (liveData && liveData.mode !== "mock" && /^0x[0-9a-f]{40}$/i.test(liveData.token) ? liveData.token.toLowerCase() : null);
+  // token analytics (the summary + the analytics cards): one shared poll. Token pages, and /exit once $EXIT is
+  // live (before launch /exit shows a demo token: its numbers must never sit under the $EXIT label)
+  const anToken = token ? (notVibe ? null : token) : IS_LIVE ? ACTIVE_TOKEN : null;
+  const analytics = useTokenAnalytics(anToken);
+  const health = useHealth(healthToken);
+  // the front of the line: marks over the first buyers' heads; only where the line and the reads are the same token
+  const front = useMemo(() => (anToken ? readFront(analytics.a, health) : null), [anToken, analytics.a, health]);
+  // the first buyers who sold everything stand faded at their buy-order spot (no place: they left the line)
+  const { line, gone } = useMemo(() => {
+    const gone = new Set<string>();
+    if (!front || !realLine.length) return { line: realLine, gone };
+    const at = new Map(realLine.map((e, i) => [e.wallet, i]));
+    const before = new Map<number, WireEntry[]>(); // line index -> ghosts drawn just before it
+    const tail: WireEntry[] = [];
+    const host = realLine[0]?.isCreator ? 1 : 0; // the Dev stands beside the door, first in the array
+    front.buyers.forEach((b, i) => {
+      if (!b.gone || at.has(b.wallet)) return;
+      const next = front.buyers.slice(i + 1).find((x) => at.has(x.wallet));
+      const ghost: WireEntry = { wallet: b.wallet, place: 0, balance: "0", lp: 0, skin: skinOf(b.wallet), tier: 0, behind: 0, ahead: 0, isCreator: false, enteredTs: 0, entryTokens: 0, entryValueEth: 0, positionCostEth: 0, entries: 0 };
+      gone.add(b.wallet);
+      if (next) {
+        const k = Math.max(at.get(next.wallet)!, host);
+        before.set(k, [...(before.get(k) ?? []), ghost]);
+      } else tail.push(ghost);
+    });
+    if (!gone.size) return { line: realLine, gone };
+    // ghosts with no holding first buyer after them stand after the last first buyer still in line
+    const lastFront = Math.max(host - 1, ...front.buyers.map((b) => at.get(b.wallet) ?? -1));
+    const out: WireEntry[] = [];
+    if (lastFront < 0) out.push(...tail);
+    realLine.forEach((e, i) => {
+      out.push(...(before.get(i) ?? []), e);
+      if (i === lastFront) out.push(...tail);
+    });
+    return { line: out, gone };
+  }, [front, realLine]);
 
   // the corridor is drawn edge to edge: measure the stage, then fit as many people as its width holds
   const stageRef = useRef<HTMLDivElement>(null);
@@ -187,8 +242,9 @@ export default function LiveHero({ token = null, info: serverInfo = null, create
   const scene = safePage === 0 ? "door" : safePage === pageCount - 1 ? "arrival" : "passage";
   const pageStart = safePage === 0 ? 0 : firstPageSize + (safePage - 1) * pageSize;
   const pageLine = line.slice(pageStart, pageStart + (safePage === 0 ? firstPageSize : pageSize));
-  const rangeStart = pageLine[0]?.place ?? 0;
-  const rangeEnd = pageLine.at(-1)?.place ?? 0;
+  const pagePlaced = pageLine.filter((e) => !gone.has(e.wallet));
+  const rangeStart = pagePlaced[0]?.place ?? 0;
+  const rangeEnd = pagePlaced.at(-1)?.place ?? 0;
   const pageForIndex = (index: number) => index < firstPageSize ? 0 : 1 + Math.floor((index - firstPageSize) / pageSize);
 
   // in-app browsers (X, Telegram...) have no wallet: say so, with a copy-link button
@@ -253,7 +309,7 @@ export default function LiveHero({ token = null, info: serverInfo = null, create
     }
     setLinePage(pageForIndex(index));
     setSelectedWallet(me);
-    setFindStatus(`Found · #${line[index].place}`);
+    setFindStatus(gone.has(me) ? "Sold everything: out of line" : `Found · #${line[index].place}`);
   };
 
   useEffect(() => {
@@ -274,55 +330,53 @@ export default function LiveHero({ token = null, info: serverInfo = null, create
 
   const age = createdAt && data?.updatedAt ? ageText(Math.max(0, data.updatedAt / 1000 - createdAt)) : null;
   const pct = unknown ? null : progress / 100;
-  // any trouble with live data (unknown, not zero): one quiet "Retrying…" in the summary's meta line
-  const retrying = !notVibe && (!!(error && error !== "not_vibe") || !!data?.unavailable);
-  // Line Health: the page's token, or on /exit the live $EXIT (demo token before launch; never mock data)
-  const healthToken = token ?? (liveData && liveData.mode !== "mock" && /^0x[0-9a-f]{40}$/i.test(liveData.token) ? liveData.token.toLowerCase() : null);
-  // token analytics (the summary + the analytics cards): one shared poll. Token pages, and /exit once $EXIT is
-  // live (before launch /exit shows a demo token: its numbers must never sit under the $EXIT label)
-  const anToken = token ? (notVibe ? null : token) : IS_LIVE ? ACTIVE_TOKEN : null;
-  const analytics = useTokenAnalytics(anToken);
-  const health = useHealth(healthToken);
   // the Supply read's per-wallet flags (top 10), shown as tags in the one holders list
   const supplyTop = analytics.a?.supply.data?.top10;
   const holderFlags = useMemo(() => (supplyTop ? new Map(supplyTop.map((r) => [r.wallet.toLowerCase(), r.flags])) : null), [supplyTop]);
-  const an1h = analytics.a?.volume.data?.windows.find((w) => w.label === "1h") ?? null;
   const an24 = analytics.a?.volume.data?.windows.find((w) => w.label === "24h") ?? null;
   const market = analytics.a?.market.data ?? null;
   const marketReason = analytics.a?.market.reason ?? null;
   const anGraduated = !!analytics.a?.graduated;
   const tags = analytics.a?.tags;
   const creator = token ? info?.creator || liveData?.creator || null : null;
+  const passport = useDevPassport(token ? creator : null);
+  // the letter in the share text = the letter on the page and on the card (one grade)
+  const shareGrade = useMemo(() => (passport.loading ? null : readVerdict(analytics.a, trackRecord(passport.p, token), null).grade), [analytics.a, passport.p, passport.loading, token]);
   // one holders figure on the page: the chain's own count (the Supply card's) once it is in, vibe/vibe's until then
   const chainHolders = analytics.a?.supply.data?.holders ?? null;
   const holdersShown = chainHolders ?? holders;
 
-  // one KPI set for every line, with or without analytics (unknown = null, drawn as "—")
-  const vol24Src: SummaryKpis["vol24Src"] = flow.vol24 !== null ? "tape" : vol24Vibe !== null && !unknown ? "vibe" : null;
+  // the market strip's numbers (unknown = null, drawn as "—")
+  const vol24Src: MarketKpis["vol24Src"] = flow.vol24 !== null ? "tape" : vol24Vibe !== null && !unknown ? "vibe" : null;
   const curveGrad = !!data?.curve.graduated;
-  const targetEth = data?.curve.targetEth || 5;
-  const kpis = useMemo<SummaryKpis>(() => ({
+  const kpis = useMemo<MarketKpis>(() => ({
     mcapEth: anToken ? market?.mcapEth ?? null : null,
     mcapTitle: market
       ? `Spot price x total supply, in ETH (spot ${fmtEth(market.spotEth * 1e6)} ETH per 1M)`
       : anToken ? marketReason ?? "Reading the curve…" : "Spot price x total supply, in ETH",
     change1hBps,
-    vol24Eth: vol24Src === "tape" ? flow.vol24 : vol24Src === "vibe" ? vol24Vibe : null,
+    // the chain's 24 h volume once the analytics are in (the number the Volume section shows), else the tape / vibe
+    vol24Eth: an24 ? an24.volumeEth : vol24Src === "tape" ? flow.vol24 : vol24Src === "vibe" ? vol24Vibe : null,
     vol24Src,
-    realPct: an24 && an24.volumeEth > 0 ? (an24.realEth / an24.volumeEth) * 100 : null,
-    // the same count as Real volume's 1h column (chain logs) when it's in; the tape until then
-    buys1h: an1h ? an1h.buys : flow.buys1h,
-    sells1h: an1h ? an1h.sells : flow.sells1h,
-    bsTitle: an1h ? "Buys and sells in the last hour, from the chain logs" : "Buys and sells in the last hour, from the tape",
     holders: holdersShown,
-    holdersSrc: chainHolders !== null ? "chain" : holders !== null ? "vibe" : null,
-    inLine: unknown ? null : inLine,
     gradPct: pct,
     graduated: curveGrad || anGraduated,
-    targetEth,
     etaHours: token ? etaHours : null,
     etaStalled: !!token && etaStalled,
-  }), [anToken, market, marketReason, change1hBps, vol24Src, flow, vol24Vibe, an24, an1h, holdersShown, chainHolders, holders, unknown, inLine, pct, curveGrad, anGraduated, targetEth, token, etaHours, etaStalled]);
+  }), [anToken, market, marketReason, change1hBps, vol24Src, flow, vol24Vibe, an24, holdersShown, pct, curveGrad, anGraduated, token, etaHours, etaStalled]);
+
+  // the market under the verdict, small: price, flow and the curve (graduation is a secondary stat now)
+  const marketItems = useMemo<Record<"mcap" | "vol" | "holders" | "curve", MarketItem>>(() => {
+    const k = kpis;
+    const grad = k.graduated || (k.gradPct !== null && k.gradPct >= 100);
+    const chg = k.change1hBps;
+    return {
+      mcap: { label: "MCap", value: k.mcapEth === null ? "—" : <>{fmtEth(k.mcapEth)}<small> ETH</small></>, sub: chg === null || Math.abs(chg) < 5 ? undefined : <span className={chg > 0 ? styles.up : styles.down}>{`${chg > 0 ? "+" : "−"}${Math.abs(chg / 100).toFixed(Math.abs(chg) >= 10_000 ? 0 : 1)}% 1h`}</span>, title: k.mcapTitle },
+      vol: { label: "Vol 24h", value: k.vol24Eth === null ? "—" : <>{fmtEth(k.vol24Eth)}<small> ETH</small></>, title: k.vol24Src === "vibe" ? "24 h volume, as vibe/vibe counts it" : undefined },
+      holders: { label: "Holders", value: k.holders === null ? "—" : fmtInt(k.holders) },
+      curve: { label: "Curve", value: grad ? "Graduated" : k.gradPct === null ? "—" : `${k.gradPct.toFixed(1)}%`, sub: !grad && k.gradPct !== null ? (k.etaHours !== null ? `ETA ${etaText(k.etaHours)}` : k.etaStalled ? "stalled" : "to graduation") : undefined, title: "Share of the curve's tokens sold; at 100% trading moves to the V4 pool" },
+    };
+  }, [kpis]);
 
   // one stable handler for the memoized cards (a new arrow each render would re-render them on every queue poll)
   const selectRef = useRef<(wallet: string, from: "holders") => void>(() => {});
@@ -339,27 +393,9 @@ export default function LiveHero({ token = null, info: serverInfo = null, create
   });
   const findMeAs = (cls: string) => me
     ? <button type="button" className={cls} onClick={findMe} title="Show your place in this line">Find me in line</button>
-    : <Link className={cls} href="/lines" title="Connect or type your wallet on My lines, then find your place in every line">Find me in line</Link>;
+    : <Link className={cls} href="/lines" title="Connect or type your wallet on Lines, then find your place in every line">Find me in line</Link>;
   const findMeBtn = findMeAs(styles.btnS);
 
-  // what each section holds on this page (an empty section gets no tab and no head)
-  const has: Record<SectionId, boolean> = {
-    line: true,
-    risk: !!(healthToken || anToken),
-    holders: !!(anToken || token),
-    exit: !!anToken,
-    dev: !!token,
-  };
-  const sections = SECTIONS.filter((x) => has[x.id]);
-  const head = (id: SectionId) => {
-    const x = SECTIONS.find((y) => y.id === id)!;
-    return (
-      <header className={styles.secHead}>
-        <h2 id={`${id}-h`}>{x.label}</h2>
-        <p>{x.lead}</p>
-      </header>
-    );
-  };
   const canPage = !!data && !lineUnknown && pageCount > 1;
 
   return (
@@ -380,35 +416,28 @@ export default function LiveHero({ token = null, info: serverInfo = null, create
           age={age}
           loading={!data && !error}
           about={about}
-          creator={creator}
+          // no dev badge in the head: the dev's record is a reason next to the grade and the Dev section below
+          creator={null}
           actions={notVibe
             ? <Link className={styles.btnS} href="/">All tokens</Link>
             : token
             // phones: Buy / Find leave the header (the grade and the summary come right under the name); a quiet
-            // pair sits under the KPIs and the sticky bar takes over once the summary scrolled away
-            ? <>{findMeAs(`${styles.btnS} ${styles.wideOnly}`)}<ShareCard kind="line" id={token} symbol={info?.symbol ?? null} grade={analytics.a?.health?.grade ?? null} className={styles.btnG} rootClassName={styles.share} /><CtaLink className={`${styles.btnP} ${styles.wideOnly}`} /></>
+            // pair sits under the figures and the sticky bar takes over once it scrolled away
+            ? <>{findMeAs(`${styles.btnS} ${styles.wideOnly}`)}<ShareCard kind="line" id={token} symbol={info?.symbol ?? null} grade={shareGrade} className={styles.btnG} rootClassName={styles.share} /><CtaLink className={`${styles.btnP} ${styles.wideOnly}`} /></>
             : <>{findMeBtn}<CtaLink className={styles.btnP} label={EXIT_CTA} /></>}
         />
 
-        {!notVibe && <SummaryBar state={anToken ? analytics : null} kpis={kpis} retrying={retrying} />}
-        {token && !notVibe && (
-          <div ref={phoneActsRef} className={styles.phoneActions}>
-            <CtaLink className={styles.btnS} />
-            {findMeAs(styles.btnG)}
-          </div>
-        )}
-        {!notVibe && !anToken && retrying && <p className={styles.note} role="status">Retrying… Live numbers unknown for now.</p>}
-
+        {/* 1. the verdict. /exit before launch has no report of its own (the line below replays a demo token) */}
+        {!notVibe && anToken && <Verdict state={analytics} health={health} passport={passport} token={token} createdAt={createdAt} />}
+        {!notVibe && <Unreadable failed={queueFailed} what={token ? "this token" : "the chain"} className={styles.note} />}
         {data?.note && <p className={styles.note} role="status">{data.note}</p>}
         {notVibe && (
           <p className={styles.note} role="status">Not a vibe/vibe launch: no line. {token && <><Link href={`/w/${token.toLowerCase()}`} prefetch={false}>Open as a wallet →</Link> · </>}<Link href="/">Browse tokens →</Link></p>
         )}
 
         {!notVibe && <>
-        {sections.length > 1 && <SectionTabs items={sections.map((x) => ({ id: x.id, label: x.label }))} className={styles.tabs} />}
-
-        <div id="line" className={styles.sec} aria-labelledby="line-h">
-          {head("line")}
+        {/* 2. the line: every holder queued by first buy, the front carries the sniper / bundle marks */}
+        <section id="line" className={styles.lineTop} aria-label="The line: every holder, queued by first buy. Pick a person to open their ticket.">
           <div className={styles.corr}>
             <div className={styles.stage} ref={stageRef}>
               <div className={styles.corridorBox}>
@@ -428,6 +457,8 @@ export default function LiveHero({ token = null, info: serverInfo = null, create
                   event={sceneEvent ?? undefined}
                   status={lineUnknown ? "unknown" : !data ? "loading" : "ok"}
                   doorLabel={false}
+                  marks={front?.marks}
+                  gone={gone}
                 />
               </div>
               {/* while the chain is being read: a row of shadows waiting, not an empty corridor */}
@@ -440,25 +471,22 @@ export default function LiveHero({ token = null, info: serverInfo = null, create
               )}
             </div>
             <div className={styles.corrFoot}>
-              <span className={styles.range}>
-                {!data ? (error ? "—" : "Reading the line…") : lineUnknown ? "—" : rangeStart ? <>#{rangeStart}–{rangeEnd} <span className={styles.t3}>of {fmtInt(inLine)}</span></> : "No one in line yet"}
-                {data && !lineUnknown && (
-                  <span className={`${styles.t3} ${styles.lineMeta}`} title="Walked out: the bag fell to 5% of its peak or under 5,000 tokens.">
-                    {" "}· {fmtInt(data.totals.exited)} walked out
-                  </span>
-                )}
-              </span>
-              {/* paging: further back in line on the left, toward the front (the door) on the right */}
-              {canPage && (
+              <FrontCaption front={front} health={health} faded active={!!anToken}>
                 <span className={styles.pager}>
-                  <button ref={backRef} type="button" className={styles.arrow} onClick={() => pageBy(1)} disabled={safePage >= pageCount - 1} aria-label="Further back in line" title="Further back">
-                    <span aria-hidden>←</span>
-                  </button>
-                  <button ref={fwdRef} type="button" className={styles.arrow} onClick={() => pageBy(-1)} disabled={safePage <= 0} aria-label="Toward the front of the line" title="Toward the front">
-                    <span aria-hidden>→</span>
-                  </button>
+                  {data && !lineUnknown && rangeStart > 0 && <span className={styles.range}>#{rangeStart}–{rangeEnd} <span className={styles.t3}>of {fmtInt(inLine)}</span></span>}
+                  {data && !lineUnknown && !rangeStart && !gone.size && <span className={styles.range}>No one in line yet</span>}
+                  {lineUnknown && <span className={styles.range}>—</span>}
+                  {/* paging: further back in line on the left, toward the front (the door) on the right */}
+                  {canPage && <>
+                    <button ref={backRef} type="button" className={styles.arrow} onClick={() => pageBy(1)} disabled={safePage >= pageCount - 1} aria-label="Further back in line" title="Further back">
+                      <span aria-hidden>←</span>
+                    </button>
+                    <button ref={fwdRef} type="button" className={styles.arrow} onClick={() => pageBy(-1)} disabled={safePage <= 0} aria-label="Toward the front of the line" title="Toward the front">
+                      <span aria-hidden>→</span>
+                    </button>
+                  </>}
                 </span>
-              )}
+              </FrontCaption>
             </div>
           </div>
           {(findStatus || (me && (mine || lineUnknown))) && (
@@ -466,74 +494,63 @@ export default function LiveHero({ token = null, info: serverInfo = null, create
               {findStatus ?? (me && mine ? `You are #${mine.place} · ${fmtInt(mine.ahead)} ahead of you` : "You are #?")}
             </p>
           )}
-
-          <div className={`${styles.grid2} ${showSide ? "" : styles.solo}`}>
-            <div className={styles.tapeCol}>
-              <CorridorTape
-                trades={data?.trades ?? []}
-                symbol={data?.symbol || info?.symbol}
-                updatedAt={data?.updatedAt ?? 0}
-                selected={selectedWallet ?? undefined}
-                onSelect={selectWallet}
-                places={places}
-                lineComplete={!!data && !data.unavailable && !data.lineTruncated}
-                unknown={lineUnknown}
-                tags={tags}
-              />
+          {showSide && (
+            <div id="market-pass" className={styles.passSlot}>
+              <MarketPass wallet={ticketWallet} entry={ticketEntry} trade={ticketTrade} data={data} onClose={closeTicket} tag={tags?.[ticketWallet] ?? null} />
             </div>
-            {showSide && (
-              <aside className={styles.side} aria-label="Ticket">
-                <div id="market-pass" className={styles.passSlot}>
-                  <MarketPass wallet={ticketWallet} entry={ticketEntry} trade={ticketTrade} data={data} onClose={closeTicket} tag={tags?.[ticketWallet] ?? null} />
-                </div>
-              </aside>
-            )}
-          </div>
-        </div>
+          )}
+        </section>
 
-        {/* every block is open to everyone: no locks, no blur */}
-        {has.risk && (
-          <div id="risk" className={styles.sec} aria-labelledby="risk-h">
-            {head("risk")}
-            <div className={styles.cards}>
-              {healthToken && <HealthCard health={health} />}
-              {anToken && <Cards part="bundle" state={analytics} me={me} onSelect={onHolder} />}
-            </div>
-            {/* the first 20 buyers: a full-width row under the two checks (as on /exit), so neither column runs long */}
-            {healthToken && health.trouble !== "notvibe" && (
-              <div className={styles.cardsRow}>
-                <FirstBuyersCard health={health} selected={selectedWallet} onSelect={onHolder} />
-              </div>
-            )}
+        {/* 3. the numbers: one row */}
+        {anToken && <Figures state={analytics} mcap={marketItems.mcap} vol={marketItems.vol} holders={marketItems.holders} curve={marketItems.curve} />}
+        {token && (
+          <div ref={phoneActsRef} className={styles.phoneActions}>
+            <CtaLink className={styles.btnS} />
+            {findMeAs(styles.btnG)}
           </div>
         )}
-        {has.holders && (
-          <div id="holders" className={styles.sec} aria-labelledby="holders-h">
-            {head("holders")}
-            <div className={styles.cards}>
-              {anToken && <Cards part="supply" state={analytics} me={me} onSelect={onHolder} />}
-              {token && <TopHolders token={token} data={liveData} me={me} creator={creator} selected={selectedWallet} onSelect={onHolder} flags={holderFlags} />}
-            </div>
-          </div>
-        )}
-        {has.exit && (
-          <div id="exit" className={styles.sec} aria-labelledby="exit-h">
-            {head("exit")}
-            <div className={styles.cards}>
-              <Cards part="exit" state={analytics} me={me} onSelect={onHolder} />
+
+        {anToken && (
+          <ReportSections
+            state={analytics}
+            creator={creator}
+            passport={passport}
+            token={token}
+            details={<>
+              <Cards part="bundle" state={analytics} me={me} onSelect={onHolder} />
+              <Cards part="supply" state={analytics} me={me} onSelect={onHolder} />
+              {healthToken && health.trouble !== "notvibe" && <div className={rp.wide}><FirstBuyersCard health={health} selected={selectedWallet} onSelect={onHolder} /></div>}
               <Cards part="volume" state={analytics} me={me} onSelect={onHolder} />
-            </div>
+              <Cards part="exit" state={analytics} me={me} onSelect={onHolder} />
+              <Cards part="clones" state={analytics} me={me} onSelect={onHolder} />
+            </>}
+          />
+        )}
+        {/* /exit before launch: no analytics, only Line health of the live token */}
+        {!anToken && healthToken && (
+          <div id="front" className={styles.sec} aria-labelledby="front-h">
+            <header className={styles.secHead}><h2 id="front-h">Front of the line</h2></header>
+            {health.trouble !== "notvibe" && <div className={styles.cardsRow}><FirstBuyersCard health={health} selected={selectedWallet} onSelect={onHolder} /></div>}
           </div>
         )}
-        {has.dev && (
-          <div id="dev" className={styles.sec} aria-labelledby="dev-h">
-            {head("dev")}
-            <div className={styles.cards}>
-              <DevMini creator={creator} />
-              {anToken && <Cards part="clones" state={analytics} me={me} onSelect={onHolder} />}
-            </div>
+
+        {/* 4. at the bottom: the trades and the holders */}
+        <div className={`${styles.bottom} ${token ? "" : styles.solo}`}>
+          <div className={styles.tapeCol}>
+            <CorridorTape
+              trades={data?.trades ?? []}
+              symbol={data?.symbol || info?.symbol}
+              updatedAt={data?.updatedAt ?? 0}
+              selected={selectedWallet ?? undefined}
+              onSelect={selectWallet}
+              places={places}
+              lineComplete={!!data && !data.unavailable && !data.lineTruncated}
+              unknown={lineUnknown}
+              tags={tags}
+            />
           </div>
-        )}
+          {token && <div className={styles.tapeCol}><TopHolders token={token} data={liveData} me={me} creator={creator} selected={selectedWallet} onSelect={onHolder} flags={holderFlags} /></div>}
+        </div>
         </>}
       </section>
 

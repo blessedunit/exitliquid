@@ -78,15 +78,6 @@ export type QueueResponse = {
   unavailable?: boolean; // chain unreachable: unknown, not zero
 };
 
-export type MoodResponse = {
-  mood: "panic" | "normal" | "calm" | "unknown";
-  multiplier: number;
-  avgChangePct: number | null;
-  asOf: string | null; // market date of the quotes
-  quotes: { symbol: string; changePct: number | null; close: number | null }[];
-  source: string;
-};
-
 export type TicketResponse = {
   mode: Mode;
   token: string;

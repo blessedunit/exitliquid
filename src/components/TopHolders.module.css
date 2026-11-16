@@ -24,3 +24,8 @@
   .ext { min-width: 40px; min-height: 44px; }
   .devLink { min-height: 40px; }
 }
+
+/* loading: five quiet rows, no caption */
+.skel { display: grid; }
+.skel i { display: flex; align-items: center; height: 44px; border-bottom: 1px solid var(--line); }
+.skel i > span { width: 40%; height: 12px; }

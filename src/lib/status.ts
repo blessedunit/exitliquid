@@ -38,7 +38,7 @@ const VIBE_API = `https://testnet.vibevibe.fun/api/v1/chains/${CHAIN_ID}`;
 const VIBE_HEADERS = { accept: "application/json", origin: "https://testnet.vibevibe.fun", "user-agent": "exitliquid.fun (read-only directory)" };
 // the server's private RPC when set (what the site really reads from); never printed
 const RPC_URL = process.env.EXIT_RPC_URL || PUBLIC_RPC_URL;
-const INDEX_FRESH_SEC = 2 * 3600; // refreshed hourly: one missed run is still green
+const INDEX_FRESH_SEC = 2 * 3600; // refreshed hourly (ops/early_index.py): one missed run is still green
 const INDEX_STALE_SEC = 6 * 3600; // five missed runs: the refresh task has stopped
 const STATE_FRESH_SEC = 30 * 60; // a snapshot is served as is for 15 min, then rebuilt on the next read
 const STATE_STALE_SEC = 6 * 3600;
@@ -111,10 +111,10 @@ async function probeVibe(head: Promise<{ v: Head }>): Promise<Probe> {
     detail: "Green when its indexer is under 2 min behind the chain, yellow under 15 min.",
   };
   // meta.freshness = vibe's own verdict on its data (measured 02.10: status PARTIAL, reason INDEXER_HEAD_OBSERVATION_STALE)
-  type Fresh = { status?: string; reason?: string; chainHeadBlock?: string; coverageComplete?: boolean };
+  type Fresh = { status?: string; reason?: string; chainHeadBlock?: string; coverageComplete?: boolean; indexedThroughBlock?: string; asOfBlock?: string };
   type Page = { meta?: { freshness?: Fresh }; data?: { page?: { snapshotBlock?: string }; items?: unknown[] } };
   const r = await timed(async (signal) => {
-    const res = await fetch(`${VIBE_API}/launches?sort=CREATED_DESC&limit=1`, { headers: VIBE_HEADERS, signal, cache: "no-store" });
+    const res = await fetch(`${VIBE_API}/v6/launches?limit=1`, { headers: VIBE_HEADERS, signal, cache: "no-store" });
     if (!res.ok) throw new Error(res.status === 403 ? "HTTP 403: refused (Cloudflare blocked this server)" : res.status === 429 ? "HTTP 429: rate-limited" : `HTTP ${res.status}`);
     return (await res.json()) as Page;
   });
@@ -122,7 +122,8 @@ async function probeVibe(head: Promise<{ v: Head }>): Promise<Probe> {
     const rate = r.err?.includes("429");
     return { ...base, level: rate ? "warn" : "down", value: rate ? "Rate-limited" : "Unavailable", reason: `${r.err}. Pages fall back to cached data; unknown values show as —.`, short: rate ? "vibe/vibe API rate-limited" : "vibe/vibe API not answering", latencyMs: r.ms };
   }
-  const snap = Number(r.v.data?.page?.snapshotBlock);
+  // the v6 list (where launches happen since 29.09; the v1 list froze) reports its indexer block in meta.freshness
+  const snap = Number(r.v.meta?.freshness?.indexedThroughBlock ?? r.v.meta?.freshness?.asOfBlock ?? r.v.data?.page?.snapshotBlock);
   const fr = r.v.meta?.freshness;
   const frStatus = typeof fr?.status === "string" ? fr.status.toUpperCase() : null;
   // vibe calls its own data incomplete: say so in yellow even when the block lag looks small
