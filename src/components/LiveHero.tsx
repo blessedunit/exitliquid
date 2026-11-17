@@ -341,7 +341,9 @@ export default function LiveHero({ token = null, info: serverInfo = null, create
   const creator = token ? info?.creator || liveData?.creator || null : null;
   const passport = useDevPassport(token ? creator : null);
   // the letter in the share text = the letter on the page and on the card (one grade)
-  const shareGrade = useMemo(() => (passport.loading ? null : readVerdict(analytics.a, trackRecord(passport.p, token), null).grade), [analytics.a, passport.p, passport.loading, token]);
+  const shareRead = useMemo(() => (passport.loading ? null : readVerdict(analytics.a, trackRecord(passport.p, token), null)), [analytics.a, passport.p, passport.loading, token]);
+  const shareGrade = shareRead?.grade ?? null;
+  const shareFull = !!shareRead && shareRead.coverage !== null && shareRead.coverage.length === 0;
   // one holders figure on the page: the chain's own count (the Supply card's) once it is in, vibe/vibe's until then
   const chainHolders = analytics.a?.supply.data?.holders ?? null;
   const holdersShown = chainHolders ?? holders;
@@ -423,7 +425,7 @@ export default function LiveHero({ token = null, info: serverInfo = null, create
             : token
             // phones: Buy / Find leave the header (the grade and the summary come right under the name); a quiet
             // pair sits under the figures and the sticky bar takes over once it scrolled away
-            ? <>{findMeAs(`${styles.btnS} ${styles.wideOnly}`)}<ShareCard kind="line" id={token} symbol={info?.symbol ?? null} grade={shareGrade} className={styles.btnG} rootClassName={styles.share} /><CtaLink className={`${styles.btnP} ${styles.wideOnly}`} /></>
+            ? <>{findMeAs(`${styles.btnS} ${styles.wideOnly}`)}<ShareCard kind="line" id={token} symbol={info?.symbol ?? null} grade={shareGrade} fullCheck={shareFull} className={styles.btnG} rootClassName={styles.share} /><CtaLink className={`${styles.btnP} ${styles.wideOnly}`} /></>
             : <>{findMeBtn}<CtaLink className={styles.btnP} label={EXIT_CTA} /></>}
         />
 

@@ -165,3 +165,5 @@ section.sec { padding: 24px 0; }
   .caption { gap: 0 12px; }
   .capText { flex-basis: 100%; }
 }
+/* the coverage marker ("Full check" / "Partial: ...") may wrap: the list of what was not read can be long */
+.meta > span.cover { white-space: normal; }

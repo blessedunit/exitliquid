@@ -3,7 +3,7 @@
 import type { Address } from "viem";
 import data from "@/data/factories.json";
 
-type Entry = { address: string; version?: string; plumbing?: string; name?: string; id?: string; learned?: boolean };
+type Entry = { address: string; version?: string; plumbing?: string; name?: string; id?: string; learned?: boolean; zap?: boolean };
 export type Factory = { id: string; version: "v1" | "v6"; address: string; from: number; label: string };
 
 const low = (a: string) => a.toLowerCase();
@@ -23,7 +23,10 @@ export const PLUMBING = plumbingOf("v1");
 /** protocol contracts every v6 token marks as non-holders at launch. Never people. */
 export const V6_PLUMBING = plumbingOf("v6");
 const byId = (id: string) => low((data.plumbing as Entry[]).find((p) => p.id === id)!.address);
-export const V6_ZAP = byId("v6zap");
+/** vibe's v6 zaps, one per v6 factory: pool trades hop PoolManager -> zap -> wallet (and back). Every hop through
+ *  any of them is collapsed by the analytics (v6engine.prepare), so a pool trade reads as PoolManager <-> wallet. */
+export const V6_ZAPS: string[] = (data.plumbing as Entry[]).filter((p) => p.zap).map((p) => low(p.address));
+export const V6_ZAP_SET: ReadonlySet<string> = new Set(V6_ZAPS);
 /** Uniswap V4 PoolManager: graduated tokens trade in its pools */
 export const POOL_MANAGER = byId("poolManager");
 /** names shown on wallet pages */

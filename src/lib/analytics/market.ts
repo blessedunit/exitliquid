@@ -36,7 +36,8 @@ const quoterAbi = parseAbi([
 
 type PoolKey = readonly [Address, Address, number, number, Address];
 /** buyQuotes: the contract's own quote (tokens out) for each IMPACT_SIZES entry, read in the same batch; null = failed */
-export type MarketState = Market & { reserves: Reserves; curve: string; poolKey: PoolKey | null; buyQuotes: (number | null)[] };
+/** launchSpot: the curve's start price read from its own state (curve only; the engine falls back to the v1 curve model) */
+export type MarketState = Market & { reserves: Reserves; curve: string; poolKey: PoolKey | null; buyQuotes: (number | null)[]; launchSpot: number | null };
 
 const wei = (v: bigint) => Number(v) / 1e18;
 const toWei = (v: number) => BigInt(Math.floor(v * 1e18));
@@ -99,6 +100,8 @@ async function readMarket(token: string, curve: string): Promise<MarketState> {
       modelCheck,
       supply: null,
       mcapEth: null,
+      // start of the curve from its own state: virtual ETH minus the real ETH it took in, same k
+      launchSpot: wei(ve) > wei(real) ? (wei(ve) - wei(real)) ** 2 / (reserves.e * reserves.t) : null,
       reserves,
       curve,
       poolKey: null,
@@ -143,6 +146,7 @@ async function readMarket(token: string, curve: string): Promise<MarketState> {
     modelCheck: null,
     supply: null,
     mcapEth: null,
+    launchSpot: null,
     reserves,
     curve,
     poolKey: key,

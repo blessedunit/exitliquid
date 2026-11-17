@@ -5,7 +5,7 @@ import type { RawTransfer } from "@/lib/chain";
 import type { QueueEntry } from "@/lib/queue";
 import { POOL_MANAGER } from "@/lib/factories";
 import { FEE, breakEven, buyOut, feesOnlyPct, pctMove, sellOut, tokensForGross, type Reserves } from "./cpmm";
-import type { Bucket, Bundle, BundleGroup, ExitMath, Impact, Supply, SupplyRow, TopTrader, Volume, VolWindow, WalletTag } from "./types";
+import type { Bucket, Bundle, BundleGroup, ExitMath, Impact, Pusher, Supply, SupplyRow, TopTrader, VolConcentration, Volume, VolWindow, WalletTag } from "./types";
 
 export const ZERO = "0x0000000000000000000000000000000000000000";
 export const DEAD = "0x000000000000000000000000000000000000dead";
@@ -23,7 +23,15 @@ export function dustFor(native: boolean, firstImpactSize: number | null): number
   if (native) return MICRO_ETH;
   return firstImpactSize !== null && firstImpactSize > 0 ? firstImpactSize / 1000 : null;
 }
-const ROUND_TRIP_BLOCKS = 2;
+/** wash, part 2: one wallet's buy and opposite sell within this many seconds is a round trip. Cut by the legs'
+ *  timestamps (interpolated between real block timestamps), or by blocks at the measured block time when a leg has
+ *  no timestamp (blocktime.ts). The old 2-block rule (~0.4 s) never fired: 0 wash on all 151 v6 lines (audit 17.11). */
+export const WASH_WINDOW_SEC = 300;
+/** volume concentration needs this many sized trades in the window, else null */
+const CONC_MIN_TRADES = 5;
+/** a real holder holds at least this share of total supply (%): 0.01% = 100k of 1B tokens. Below it sit the
+ *  crumbs: tax-reward payouts, dust buys, leftovers of a sell-all (bags worth well under 0.001 ETH at launch mcap). */
+export const REAL_HOLDER_MIN_PCT = 0.01;
 const BUNDLE_SCAN = 100;
 
 const whole = (v: bigint) => Number(v / 10n ** 12n) / 1e6;
@@ -111,7 +119,9 @@ export function marketLegs(raw: RawTransfer[], curve: string, plumbing: Set<stri
 export type Book = {
   balance: Map<string, number>; // every address, plumbing included (whole tokens)
   boughtIn: Map<string, number>; // tokens in through a market buy
-  giftIn: Map<string, number>; // tokens in from another wallet
+  giftIn: Map<string, number>; // tokens in from another wallet, or from a gift list (book's giftFrom)
+  /** the part of giftIn that came from a gift list (v6 airdrop via the synthetic GIFTS sender) */
+  listGiftIn: Map<string, number>;
   firstBuyBlock: Map<string, number>;
   /** average-cost basis of the current bag (ETH); gifts cost 0 */
   cost: Map<string, number>;
@@ -123,12 +133,14 @@ export type Book = {
   minted: number;
 };
 
-export function book(raw: RawTransfer[], legs: Leg[], curve: string, plumbing: Set<string>): Book {
+/** `giftFrom`: plumbing senders whose transfers are gifts to people (v6 gift-list deliveries come from a synthetic
+ *  GIFTS address that is plumbing, so the 3,879 HUB airdrop wallets used to count as 0 gifted holders) */
+export function book(raw: RawTransfer[], legs: Leg[], curve: string, plumbing: Set<string>, giftFrom?: ReadonlySet<string>): Book {
   const c = curve.toLowerCase();
   const legEth = new Map<string, number | null>();
   for (const l of legs) if (l.side === "buy") legEth.set(`${l.tx}:${l.wallet}`, l.eth);
   const b: Book = {
-    balance: new Map(), boughtIn: new Map(), giftIn: new Map(), firstBuyBlock: new Map(), cost: new Map(),
+    balance: new Map(), boughtIn: new Map(), giftIn: new Map(), listGiftIn: new Map(), firstBuyBlock: new Map(), cost: new Map(),
     costUnknown: new Set(), poolBuyer: new Set(), gaveTo: new Map(), gaveTokens: new Map(), minted: 0,
   };
   const add = (m: Map<string, number>, k: string, v: number) => m.set(k, (m.get(k) ?? 0) + v);
@@ -165,6 +177,10 @@ export function book(raw: RawTransfer[], legs: Leg[], curve: string, plumbing: S
         if (eth === null || eth === undefined) b.costUnknown.add(r.to);
         else add(b.cost, r.to, eth);
       }
+    } else if (giftFrom?.has(r.from)) {
+      // a gift-list delivery: free tokens (cost 0), not a buy; the list itself is plumbing, never a gifter
+      add(b.giftIn, r.to, v);
+      add(b.listGiftIn, r.to, v);
     } else if (!plumbing.has(r.from) && r.from !== ZERO) {
       add(b.giftIn, r.to, v);
       if (movedCost > 0) add(b.cost, r.to, movedCost);
@@ -447,38 +463,76 @@ export function exitMath(
  * `since` = first block of each window ("1h", "24h"), measured on the chain (engine.windowStart);
  * without it the windows fall back to the interpolated log timestamps.
  */
-export function volume(legs: Leg[], nowSec: number, labels: { sniper: Set<string>; farm: Set<string> } | null, since?: { h1: number; d1: number } | null, dust: number | null = MICRO_ETH): Volume {
+/** options of volume(): the wash window in blocks for legs without a timestamp (null = block time unknown) and the creator */
+export type VolumeOpts = { washBlocks?: number | null; creator?: string | null };
+
+export function volume(legs: Leg[], nowSec: number, labels: { sniper: Set<string>; farm: Set<string> } | null, since?: { h1: number; d1: number } | null, dust: number | null = MICRO_ETH, opts: VolumeOpts = {}): Volume {
   // dust in the pair's own unit (dustFor); null = the pair's scale is unknown, no trade is called dust
   const isDust = (l: Leg) => dust !== null && l.eth !== null && l.eth < dust;
-  // wash, part 2: one wallet in and out (either order) within 2 blocks
-  const wash = new Set<Leg>();
+  const washBlocks = opts.washBlocks ?? null;
+  const creator = opts.creator ? opts.creator.toLowerCase() : null;
+  // wash, part 2: one wallet's buy and opposite sell (either order; curve or pool, so a curve buy sold into the
+  // fresh pool right after graduation counts too) within WASH_WINDOW_SEC. Matched by tokens, oldest first: only
+  // the part of a leg the opposite leg undoes is wash, so a 1 ETH buy with a small sell a minute later stays
+  // mostly real, and a lone buy is never wash.
+  // close(): true = inside the window, false = outside, null = unknown (no timestamps, block time unmeasured)
+  let windowUnknown = false;
+  const close = (a: Leg, b: Leg): boolean | null => {
+    if (a.ts > 0 && b.ts > 0) return Math.abs(b.ts - a.ts) <= WASH_WINDOW_SEC;
+    if (washBlocks === null) return null;
+    return Math.abs(b.block - a.block) <= washBlocks;
+  };
   const byWallet = new Map<string, Leg[]>();
   for (const l of legs) group(byWallet, l.wallet, l);
-  const roundTrip = new Set<Leg>();
+  const matched = new Map<Leg, number>(); // tokens of the leg undone by an opposite leg inside the window
   for (const ls of byWallet.values()) {
-    for (let i = 0; i < ls.length; i++) {
-      for (let j = i + 1; j < ls.length && ls[j].block - ls[i].block <= ROUND_TRIP_BLOCKS; j++) {
-        if (ls[j].side !== ls[i].side) { roundTrip.add(ls[i]); roundTrip.add(ls[j]); }
+    const rem = ls.map((l) => l.tokens);
+    let lo = 0;
+    for (let j = 1; j < ls.length; j++) {
+      const b = ls[j];
+      // legs are in chain order: the ones already out of the window stay out for every later leg
+      while (lo < j && close(ls[lo], b) === false) lo++;
+      for (let i = lo; i < j && rem[j] > 1e-9; i++) {
+        const a = ls[i];
+        if (a.side === b.side || rem[i] <= 1e-9) continue;
+        const c = close(a, b);
+        if (c === null) { windowUnknown = true; continue; }
+        if (!c) continue;
+        const m = Math.min(rem[i], rem[j]);
+        rem[i] -= m;
+        rem[j] -= m;
+        matched.set(a, (matched.get(a) ?? 0) + m);
+        matched.set(b, (matched.get(b) ?? 0) + m);
       }
     }
   }
-  for (const l of legs) if (roundTrip.has(l) || isDust(l)) wash.add(l);
+  /** the wash part of a leg's size: all of it for dust, else the share a round trip undid */
+  const washOf = (l: Leg): number => {
+    if (l.eth === null) return 0;
+    if (isDust(l)) return l.eth;
+    const m = matched.get(l);
+    return m && l.tokens > 0 ? l.eth * Math.min(1, m / l.tokens) : 0;
+  };
 
   const windows: VolWindow[] = ([["1h", 3600], ["24h", 86_400], ["all", Infinity]] as const).map(([label, sec]) => {
     const from = since ? (label === "1h" ? since.h1 : label === "24h" ? since.d1 : 0) : null;
     const ls = from !== null ? legs.filter((l) => l.block >= from) : legs.filter((l) => nowSec - l.ts <= sec);
-    let volumeEth = 0, washEth = 0, botEth = 0, micro = 0, unknown = 0;
+    let volumeEth = 0, washEth = 0, botEth = 0, micro = 0, unknown = 0, sized = 0;
     let buys = 0, sells = 0, trips = 0;
     const buyers = new Set<string>();
+    const perWallet = new Map<string, number>();
     for (const l of ls) {
       if (l.side === "buy") { buys++; buyers.add(l.wallet); } else sells++;
       if (l.eth === null) { unknown++; continue; }
+      sized++;
       volumeEth += l.eth;
-      if (wash.has(l)) washEth += l.eth;
+      perWallet.set(l.wallet, (perWallet.get(l.wallet) ?? 0) + l.eth);
+      const w = washOf(l);
+      washEth += w;
       if (isDust(l)) micro++;
-      if (roundTrip.has(l)) trips++;
-      // a bot's dust or round trip is already wash: counted there once, never twice
-      if (!wash.has(l) && labels && (labels.sniper.has(l.wallet) || labels.farm.has(l.wallet))) botEth += l.eth;
+      if (matched.has(l)) trips++;
+      // a bot's dust or round trip is already wash: only the rest of its size is bot volume (no double count)
+      if (labels && (labels.sniper.has(l.wallet) || labels.farm.has(l.wallet))) botEth += l.eth - w;
     }
     return {
       label,
@@ -494,6 +548,7 @@ export function volume(legs: Leg[], nowSec: number, labels: { sniper: Set<string
       buysPerBuyer: buyers.size ? r2(buys / buyers.size) : null,
       botEth: labels ? r4(botEth) : null,
       unknownTrades: unknown,
+      concentration: concentrationOf(perWallet, volumeEth, sized, unknown, creator),
     };
   });
 
@@ -520,7 +575,110 @@ export function volume(legs: Leg[], nowSec: number, labels: { sniper: Set<string
       tag: labels?.sniper.has(wallet) ? "sniper" : labels?.farm.has(wallet) ? "farm" : null,
     }));
   const venues = new Set(legs.map((l) => l.venue));
-  return { venue: venues.size === 2 ? "both" : venues.has("pool") ? "pool" : "curve", windows, topTraders, topTradersWindow, labelsAsOf: null, dust };
+  return {
+    venue: venues.size === 2 ? "both" : venues.has("pool") ? "pool" : "curve",
+    windows, topTraders, topTradersWindow, labelsAsOf: null, dust,
+    washWindowSec: WASH_WINDOW_SEC,
+    washWindowBlocks: legs.every((l) => l.ts > 0) ? null : washBlocks,
+    washWindowUnknown: windowUnknown,
+  };
+}
+
+/** share of a window's sized volume made by its top 1 / top 3 wallets; null below CONC_MIN_TRADES sized trades,
+ *  on zero volume, or when more than 10% of the window's trades have an unknown size */
+function concentrationOf(per: Map<string, number>, total: number, sized: number, unknown: number, creator: string | null): VolConcentration | null {
+  if (sized < CONC_MIN_TRADES || !(total > 0) || unknown > 0.1 * (sized + unknown)) return null;
+  const top = [...per.entries()].sort((a, b) => b[1] - a[1]);
+  const top3 = top.slice(0, 3).reduce((s, [, v]) => s + v, 0);
+  return {
+    top1Pct: r2((top[0][1] / total) * 100),
+    top3Pct: r2((top3 / total) * 100),
+    topWallet: top[0][0],
+    topIsDev: creator ? top[0][0] === creator : null,
+    wallets: top.length,
+  };
+}
+
+/* ---------------- pusher: one wallet bought a big share of supply and sold most of it ---------------- */
+
+/**
+ * Per wallet, whole history, curve and pool legs (v6 zap hops collapsed): the biggest share of supply it built from
+ * buys (peak net position) and the share of everything it bought that it sold, ETH in / out. The worst = the most
+ * supply pushed and dumped (peak % x sold share). When nobody dumped more than 0.01% of supply that way, the biggest
+ * buyer is reported (its soldPctOfBought says it held). null = no buys at all.
+ */
+export function pusherOf(legs: Leg[], supply: number, creator: string): Pusher | null {
+  if (!(supply > 0)) return null;
+  type Acc = { bought: number; sold: number; pos: number; peak: number; ethIn: number | null; ethOut: number | null; firstBuy: number; lastSell: number };
+  const per = new Map<string, Acc>();
+  for (const l of legs) {
+    let a = per.get(l.wallet);
+    if (!a) per.set(l.wallet, (a = { bought: 0, sold: 0, pos: 0, peak: 0, ethIn: 0, ethOut: 0, firstBuy: 0, lastSell: 0 }));
+    if (l.side === "buy") {
+      a.bought += l.tokens;
+      a.pos += l.tokens;
+      a.peak = Math.max(a.peak, a.pos);
+      a.ethIn = a.ethIn === null || l.eth === null ? null : a.ethIn + l.eth;
+      if (!a.firstBuy) a.firstBuy = l.ts > 0 ? l.ts : -1;
+    } else {
+      a.sold += l.tokens;
+      a.pos = Math.max(0, a.pos - l.tokens);
+      a.ethOut = a.ethOut === null || l.eth === null ? null : a.ethOut + l.eth;
+      a.lastSell = l.ts > 0 ? l.ts : -1;
+    }
+  }
+  const soldShare = (a: Acc) => (a.bought > 0 ? Math.min(1, a.sold / a.bought) : 0);
+  const pushed = (a: Acc) => a.peak * soldShare(a);
+  let best: [string, Acc] | null = null;
+  let biggest: [string, Acc] | null = null;
+  for (const e of per) {
+    if (!(e[1].bought > 0)) continue;
+    if (!best || pushed(e[1]) > pushed(best[1])) best = e;
+    if (!biggest || e[1].peak > biggest[1].peak) biggest = e;
+  }
+  if (!best || !biggest) return null;
+  if (pushed(best[1]) < supply * 1e-4) best = biggest;
+  const [w, a] = best;
+  const c = creator ? creator.toLowerCase() : "";
+  return {
+    wallet: w,
+    isDev: c ? w === c : null,
+    boughtPct: r2((a.peak / supply) * 100),
+    totalBoughtPct: r2((a.bought / supply) * 100),
+    soldPctOfBought: Math.round(soldShare(a) * 1000) / 10,
+    pushedPct: r2((pushed(a) / supply) * 100),
+    ethIn: a.ethIn === null ? null : r4(a.ethIn),
+    ethOut: a.sold > 0 ? (a.ethOut === null ? null : r4(a.ethOut)) : 0,
+    firstBuyAt: a.firstBuy > 0 ? a.firstBuy : null,
+    lastSellAt: a.lastSell > 0 ? a.lastSell : null,
+  };
+}
+
+/** time of the newest trade (unix seconds, the log's block-anchored timestamps); null = no trades or no timestamp */
+export function lastTradeAt(legs: Leg[]): number | null {
+  let t = 0;
+  for (const l of legs) if (l.ts > t) t = l.ts;
+  return t > 0 ? t : null;
+}
+
+/**
+ * The dev's market flows, whole history: tokens sold as % of total supply, ETH put in (buys, fee included) and
+ * taken out (sells, after the fee). An ETH sum is null when any of the dev's legs on that side has an unknown size.
+ */
+export function devFlows(legs: Leg[], creator: string, supply: number): { soldSupplyPct: number | null; ethIn: number | null; ethOut: number | null } {
+  if (!creator || !(supply > 0)) return { soldSupplyPct: null, ethIn: null, ethOut: null };
+  const c = creator.toLowerCase();
+  let sold = 0;
+  let ethIn: number | null = 0;
+  let ethOut: number | null = 0;
+  for (const l of legs) {
+    if (l.wallet !== c) continue;
+    if (l.side === "sell") {
+      sold += l.tokens;
+      ethOut = ethOut === null || l.eth === null ? null : ethOut + l.eth;
+    } else ethIn = ethIn === null || l.eth === null ? null : ethIn + l.eth;
+  }
+  return { soldSupplyPct: r2((sold / supply) * 100), ethIn: ethIn === null ? null : r4(ethIn), ethOut: ethOut === null ? null : r4(ethOut) };
 }
 
 /* ---------------- 4. supply ---------------- */
@@ -593,12 +751,17 @@ export function supplyOf(bk: Book, curve: string, plumbing: Set<string>, creator
     .map(([w, to]) => ({ wallet: w, to: to.size, pct: pct(bk.gaveTokens.get(w) ?? 0), isCreator: w === creator }))
     .sort((a, b) => b.pct - a.pct)
     .slice(0, 6);
+  // real holders: bought on the market (a gift-list or transfer-only bag is no buyer) AND hold more than dust
+  const realMin = (total * REAL_HOLDER_MIN_PCT) / 100;
+  const realHolders = people.filter(([w, v]) => (bk.boughtIn.get(w) ?? 0) > 0 && v >= realMin).length;
   const freshKnown = top10.filter((r) => r.fresh !== null);
   const nonceKnown = top10.filter((r) => r.nonce !== null);
   return {
     circulatingPct: pct(held),
     marketPct: pct(market),
     holders: people.length,
+    realHolders,
+    realHolderMinPct: REAL_HOLDER_MIN_PCT,
     top10Pct: pct(top10Tokens),
     top10OfCirculatingPct: r2(held > 0 ? (top10Tokens / held) * 100 : 0),
     top10,

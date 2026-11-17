@@ -114,7 +114,7 @@ export function chipsFor(a: Analytics): Chip[] {
   const day = v?.windows.find((w) => w.label === "24h") ?? v?.windows.find((w) => w.label === "all");
   if (day && day.volumeEth >= 0.01) {
     const wash = (day.washEth / day.volumeEth) * 100;
-    if (wash >= 10) out.push({ id: "WASH", label: `Wash ${pctText(wash)}%`, level: lvl(wash, 40, 20, 10), hint: `${pctText(wash)}% of ${day.label} volume is dust trades or in-and-out within 2 blocks.`, target: "an-volume" });
+    if (wash >= 10) out.push({ id: "WASH", label: `Wash ${pctText(wash)}%`, level: lvl(wash, 40, 20, 10), hint: `${pctText(wash)}% of ${day.label} volume is dust trades or one wallet in and out within 5 minutes.`, target: "an-volume" });
     if (day.botEth !== null) {
       const bots = (day.botEth / day.volumeEth) * 100;
       if (bots >= 5) out.push({ id: "BOTS", label: `Bots ${pctText(bots)}% of vol`, level: lvl(bots, 30, 15, 5), hint: `${pctText(bots)}% of ${day.label} volume came from known sniper / farm wallets (wash left out).`, target: "an-volume" });

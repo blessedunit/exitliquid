@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-11-17 · Grades rebuilt on outcomes
+- The grade was audited against what actually happened to tokens after they were graded, and rebuilt (rules v11): the letter is the risk of becoming someone's exit liquidity, with a separate Full check / Partial marker.
+- New checks: one wallet buying a big share of supply and dumping it (graduation pumps), volume concentration in the top wallets, round-trip trades within 5 minutes, pool liquidity after graduation, price versus the launch price.
+- Holders now count wallets that bought and hold more than dust; airdrop-only wallets are excluded.
+- Pool buys through the second v6 factory's router are now counted.
+- New vocabulary: No red flags found · Minor flags · Caution · High risk · Likely exit liquidity; no letter = Too new / Not enough trading yet / Couldn't read.
+- Launches board: fixed one-line token subtitle, tabs New · Hot · Near graduation · Graduated · Watchlist, Hide high risk toggle.
+- The grader now covers active tokens across the whole launchpad, not only the last day.
+- Next.js 16.4.6.
+
 ## 2026-11-16 · One grade, fewer pages
 - One A–F grade everywhere (token page, rankings, share card), with the facts behind it. Tokens with fewer than 10 holders cap at C; unchecked snipers or dev history cap at B; nothing unknown is ever counted as clean.
 - The token page leads with the grade and the line: snipers, farms and bundles are marked on the traders in the line; one row of key numbers; short sections.

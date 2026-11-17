@@ -154,7 +154,9 @@ export default function V6Line({ initial }: { initial: Line }) {
   const a = analytics.a;
   const passport = useDevPassport(line.creator);
   // the letter in the share text = the letter on the page and on the card (one grade)
-  const shareGrade = useMemo(() => (passport.loading ? null : readVerdict(analytics.a, trackRecord(passport.p, token), null).grade), [analytics.a, passport.p, passport.loading, token]);
+  const shareRead = useMemo(() => (passport.loading ? null : readVerdict(analytics.a, trackRecord(passport.p, token), null)), [analytics.a, passport.p, passport.loading, token]);
+  const shareGrade = shareRead?.grade ?? null;
+  const shareFull = !!shareRead && shareRead.coverage !== null && shareRead.coverage.length === 0;
   const fallback = useMemo<Fallback | null>(() => known ? {
     holders: line.holders.map((h) => ({ wallet: h.address, pct: h.shareBps === null ? null : h.shareBps / 100, isCreator: !!h.isCreator })),
     complete: !!line.holdersComplete,
@@ -261,7 +263,7 @@ export default function V6Line({ initial }: { initial: Line }) {
           actions={
             <>
               {/* the quiet link first, the primary last: TokenHead puts the last action first, full width, on phones */}
-              <ShareCard kind="line" id={token} symbol={line.symbol || null} grade={shareGrade} className="btn quiet" rootClassName={styles.shareRight} />
+              <ShareCard kind="line" id={token} symbol={line.symbol || null} grade={shareGrade} fullCheck={shareFull} className="btn quiet" rootClassName={styles.shareRight} />
               <a className="btn start" href={vibeUrl} target="_blank" rel="noreferrer">Trade on vibe ↗</a>
             </>
           }

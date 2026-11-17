@@ -8,7 +8,8 @@
 // Unknown is never zero: a signal we can't read is shown as "unknown" and never penalised.
 
 import type { RawTransfer } from "./chain";
-import { POOL_MANAGER } from "./factories";
+import { POOL_MANAGER, V6_ZAP_SET } from "./factories";
+import { FALLBACK_SEC_PER_BLOCK, blocksIn, measuredSecPerBlock } from "./analytics/blocktime";
 
 export type EarlyIndex = {
   generatedAt: number; // unix seconds
@@ -52,11 +53,13 @@ export type HealthInput = {
   complete: boolean; // false = history may be missing the start (launch block unknown)
   headBlock: number;
   nowSec: number;
+  /** measured seconds per block; absent = measured from the log's own timestamps (analytics/blocktime) */
+  secPerBlock?: number | null;
 };
 
 const FIRST = 20;
 const BONUS_SCAN = 50; // verified-early wallets count anywhere in the first 50
-const HOUR_BLOCKS = 22_000; // ~1 h at 0.165 s/block (same as queue MATURE_BLOCKS)
+const HOUR_SEC = 3600; // "walked out within an hour": cut by the log's timestamps, or by blocks at the MEASURED block time
 const EXIT_SHARE = 20n; // "walked out" = the bag fell to 5% of its peak or less (the line's 95% exit rule)
 const INDEX_MAX_AGE = 14 * 86400; // older than this, labels are too old to lean on: unknown
 const MIN_BUYERS = 5; // below this the front of the line isn't formed yet
@@ -116,7 +119,18 @@ export function computeHealth(input: HealthInput, index: EarlyIndex | null): Hea
   const devSellTx = new Set<string>();
   let devSells = 0;
   const devGiftTo = new Set<string>();
-  const isMarket = (a: string) => a === c || a === POOL_MANAGER;
+  // a v6 zap hop (PoolManager -> zap -> wallet) is a pool buy too; the v6 engine collapses it before this, the
+  // check keeps an uncollapsed log honest
+  const isMarket = (a: string) => a === c || a === POOL_MANAGER || V6_ZAP_SET.has(a);
+  // ~1 h in blocks at the measured block time (was a fixed 22,000 = 0.165 s/block; blocks are ~0.2 s since Nov)
+  const hourBlocks = blocksIn(HOUR_SEC, input.secPerBlock ?? measuredSecPerBlock(raw) ?? FALLBACK_SEC_PER_BLOCK)!;
+  const tsOf = new Map<number, number>(); // block -> timestamp of the log entries (0 = unknown)
+  for (const r of raw) if (r.ts > 0) tsOf.set(r.block, r.ts);
+  /** a.block .. b.block lasted at most an hour: by timestamps when both are known, else by measured blocks */
+  const withinHour = (a: number, b: number) => {
+    const ta = tsOf.get(a), tb = tsOf.get(b);
+    return ta !== undefined && tb !== undefined ? tb - ta <= HOUR_SEC : b - a <= hourBlocks;
+  };
 
   // tx hashes where the creator's tokens went to the curve/pool: a sell, not a gift
   for (const r of raw) if (creator && r.from === creator && (r.to === c || plumbing.has(r.to)) && r.tx) devSellTx.add(r.tx);
@@ -167,7 +181,7 @@ export function computeHealth(input: HealthInput, index: EarlyIndex | null): Hea
   const first = order.slice(0, FIRST);
   const firstBuyers: FirstBuyer[] = first.map((w) => {
     const eb = exitBlock.get(w);
-    return { wallet: w, tag: tagOf(w), stillHolds: holds(w), exitedFast: eb !== undefined && eb - firstBuyBlock.get(w)! <= HOUR_BLOCKS };
+    return { wallet: w, tag: tagOf(w), stillHolds: holds(w), exitedFast: eb !== undefined && withinHour(firstBuyBlock.get(w)!, eb) };
   });
   const formed = input.complete && first.length >= MIN_BUYERS;
   const n = first.length;
@@ -248,7 +262,9 @@ export function computeHealth(input: HealthInput, index: EarlyIndex | null): Hea
     const share = fast / n;
     const p = Math.round(20 * share);
     score -= p;
-    const young = input.headBlock - (firstBuyBlock.get(first[0]) ?? input.headBlock) < HOUR_BLOCKS;
+    const fb = firstBuyBlock.get(first[0]);
+    const fbTs = fb !== undefined ? tsOf.get(fb) : undefined;
+    const young = fbTs !== undefined ? input.nowSec - fbTs < HOUR_SEC : input.headBlock - (fb ?? input.headBlock) < hourBlocks;
     reasons.push({
       id: "fast_exits",
       label: `${fast} of the first ${n} walked out within an hour`,

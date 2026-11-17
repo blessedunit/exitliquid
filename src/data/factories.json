@@ -1,5 +1,5 @@
 {
-  "_": "The ONE list of vibe/vibe contracts on Robinhood Chain testnet. Read by src/lib/factories.ts and ops/early_index.py. A new factory or hook goes here and nowhere else. Lowercase addresses. version: v1 = curve factories (LaunchCreated 0x56eef5…), v6 = taxed factories (LaunchCreated 0xa7e803…). from = block a little before the first launch. plumbing: which holder-exclusion list the contract is in (v1 = lib PLUMBING, v6 = V6_PLUMBING); ops/early_index.py excludes every address in this file. name = shown on wallet pages. learned = lib/state.ts checks this hook itself instead of trusting it.",
+  "_": "The ONE list of vibe/vibe contracts on Robinhood Chain testnet. Read by src/lib/factories.ts and ops/early_index.py. A new factory or hook goes here and nowhere else. Lowercase addresses. version: v1 = curve factories (LaunchCreated 0x56eef5…), v6 = taxed factories (LaunchCreated 0xa7e803…). from = block a little before the first launch. plumbing: which holder-exclusion list the contract is in (v1 = lib PLUMBING, v6 = V6_PLUMBING); ops/early_index.py excludes every address in this file. name = shown on wallet pages. learned = lib/state.ts checks this hook itself instead of trusting it. zap = a v6 router the pool trades hop through (PoolManager -> zap -> wallet): the analytics collapse every zap hop, one zap per v6 factory.",
   "factories": [
     { "id": "main", "version": "v1", "address": "0x40f1be6faf8dab9c143cce1a0a04c2075fb2df59", "from": 115400000, "label": "Curve · main factory", "plumbing": "v1", "name": "vibe/vibe factory" },
     { "id": "legacy", "version": "v1", "address": "0xb5b7a2f6c4eafa2d73918fca32d50e2126339eb9", "from": 108900000, "label": "Curve · legacy factory", "name": "vibe/vibe legacy factory" },
@@ -24,12 +24,12 @@
     { "address": "0x000000000000000000000000000000000000dead", "plumbing": "v1", "name": "burn address" },
     { "address": "0x0d0c44bfeb2a60f9b81c221c4cd24ca89acbacec", "plumbing": "v1", "name": "legacy liquidity locker" },
     { "address": "0x1ed9e88ae14713ca4bc964bade2bc1e3f5cd501a", "plumbing": "v1", "name": "legacy graduation adapter" },
-    { "address": "0x2784448c519d01d3ae257c0aac0b7cdad8acceb1", "plumbing": "v6", "id": "v6zap", "note": "v6 zap" },
+    { "address": "0x2784448c519d01d3ae257c0aac0b7cdad8acceb1", "plumbing": "v6", "id": "v6zap", "zap": true, "name": "vibe zap", "note": "zap of the first v6 factory: pool trades go PoolManager -> zap -> wallet" },
     { "address": "0x7771e60708060c43c8562c4544fbd5c365e549c0", "plumbing": "v6", "note": "first v6 factory" },
     { "address": "0x463e27522efa028f59e1c153d065b97cdef02495", "plumbing": "v6", "note": "first v6 factory" },
     { "address": "0xc58d6b65424ed5ea6f88aa5f000c0efe76f6110a", "plumbing": "v6", "note": "first v6 factory" },
     { "address": "0xcf7d6547bc11992a6c492e508e701c79b8393930", "plumbing": "v6", "note": "second v6 factory" },
-    { "address": "0xe1f8ca47e43f79248feb529411ba64795d628eb0", "plumbing": "v6", "note": "second v6 factory" },
+    { "address": "0xe1f8ca47e43f79248feb529411ba64795d628eb0", "plumbing": "v6", "id": "v6zap2", "zap": true, "name": "vibe zap (Nov)", "note": "zap of the second v6 factory (0xac135d…): PoolManager -> zap -> wallet, measured 17.11 on HUB" },
     { "address": "0x7f030eb56e8e09063929d1063f603232435e90f0", "plumbing": "v6", "note": "second v6 factory" }
   ]
 }

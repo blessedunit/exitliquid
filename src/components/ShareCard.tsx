@@ -4,6 +4,7 @@
 // The link is always the public site (exitliquid.fun), never the host the page was opened on.
 import { useEffect, useRef, useState } from "react";
 import { PUBLIC_SITE_URL } from "@/lib/config";
+import { GRADE_WORD, type Grade } from "@/lib/screener-types";
 import styles from "./ShareCard.module.css";
 
 export type ShareKind = "line" | "wallet" | "dev";
@@ -14,8 +15,10 @@ type Props = {
   id: string;
   /** line only: the ticker, without $ */
   symbol?: string | null;
-  /** line only: the Line Health letter when known */
+  /** line only: the grade letter when known */
   grade?: string | null;
+  /** line only: the grade came from a Full check (every input read). Only then does the text say "checked" */
+  fullCheck?: boolean;
   /** host button class (so the trigger matches its row); the default is a small ghost button */
   className?: string;
   /** extra class on the <details> root (host layout rules, e.g. full-width on phones) */
@@ -26,9 +29,17 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 const PATH: Record<ShareKind, string> = { line: "/line/", wallet: "/w/", dev: "/w/" };
 
 /** X text: short, no promises, the tag and nothing else (the link goes in its own parameter) */
-function postText(kind: ShareKind, id: string, symbol: string | null, grade: string | null): string {
+function postText(kind: ShareKind, id: string, symbol: string | null, grade: string | null, fullCheck: boolean | undefined): string {
   const sym = symbol ? `$${symbol.replace(/[^\x20-\x7e]/g, "").slice(0, 16)}` : short(id);
-  if (kind === "line") return grade ? `${sym} is graded ${grade}: snipers, dev and volume checked. #vibevibe` : `${sym}: snipers, dev and volume checked. #vibevibe`;
+  if (kind === "line") {
+    const g = grade && grade in GRADE_WORD ? (grade as Grade) : null;
+    // "checked" is a claim: only on a Full check; a partial one says so; a caller that doesn't know says neither
+    if (g) {
+      const how = fullCheck === true ? ". Full check: pumps, dev, holders and volume" : fullCheck === false ? " (partial check)" : "";
+      return `${sym}: grade ${g}, ${GRADE_WORD[g]}${how}. #vibevibe`;
+    }
+    return `${sym} on vibe/vibe: the line, holders and volume. #vibevibe`;
+  }
   if (kind === "wallet") return `Wallet ${short(id)} on vibe/vibe: tags, PnL, early entries. #vibevibe`;
   return `Dev ${short(id)} on vibe/vibe: launches, graduations, dev sells. #vibevibe`;
 }
@@ -42,7 +53,7 @@ function ShareGlyph() {
   );
 }
 
-export default function ShareCard({ kind, id, symbol = null, grade = null, className, rootClassName }: Props) {
+export default function ShareCard({ kind, id, symbol = null, grade = null, fullCheck, className, rootClassName }: Props) {
   const ref = useRef<HTMLDetailsElement>(null);
   const [open, setOpen] = useState(false);
   const [note, setNote] = useState<"" | "copied" | "saving" | "saved" | "failed">("");
@@ -103,7 +114,7 @@ export default function ShareCard({ kind, id, symbol = null, grade = null, class
     }
   };
 
-  const intent = `https://x.com/intent/tweet?text=${encodeURIComponent(postText(kind, addr, symbol, grade))}&url=${encodeURIComponent(url)}`;
+  const intent = `https://x.com/intent/tweet?text=${encodeURIComponent(postText(kind, addr, symbol, grade, fullCheck))}&url=${encodeURIComponent(url)}`;
   const label = kind === "line" ? "Share this line" : kind === "wallet" ? "Share this wallet" : "Share this dev passport";
 
   return (

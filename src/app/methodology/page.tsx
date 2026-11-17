@@ -2,31 +2,42 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PageHead from "@/components/PageHead";
 import { GLOSSARY, GLOSSARY_ORDER, type GlossaryId } from "@/lib/glossary";
-import { RULES } from "@/lib/screener-rules";
+import { POINTS, RULES } from "@/lib/screener-rules";
+import { GRADE_WORD, NO_GRADE_WORD } from "@/lib/screener-types";
 import styles from "./methodology.module.css";
 
 // The one reference page: how the grade is computed (the numbers come from lib/screener-rules.ts, so the page
 // can't drift from the code), what each tile on a token page means, and the rest of the site's words.
 export const metadata: Metadata = {
   title: "How grades work",
-  description: "How Exit Liquidity grades a vibe/vibe token A–F: the score, the caps, what each tile means and the terms the site uses.",
+  description: "How Exit Liquidity grades a vibe/vibe token A–F: the risk of becoming someone's exit liquidity, the red flags, the gates, what each tile means and the terms the site uses.",
   alternates: { canonical: "/methodology" },
 };
 
 const R = RULES;
-const share = (v: number) => `${Math.round(v * 100)}%`;
+const X = POINTS;
 
-// finding -> points off; "red" findings also cap the letter
-const COSTS: [string, string][] = [
-  [`Dev sold ${R.DEV_SOLD_SOME}%+ of the bag`, `−5 · ${R.DEV_SOLD_WARN}%+ −15 · ${R.DEV_SOLD_BAD}%+ −30 (red)`],
-  ["Dev moved tokens to other wallets", "−5"],
-  [`Dev holds ${R.DEV_HOLDS_WARN}%+ of supply`, `−10 · ${R.DEV_HOLDS_BAD}%+ −20 (red)`],
-  ["Each known sniper among the first 20 buyers", `−3, up to −36 · ${R.SNIPERS_BAD}+, or ${share(R.SNIPERS_SHARE_BAD)} of 10+ buyers, is red`],
-  [`${R.FARM_WARN}+ farm wallets among the first buyers`, `−10 · ${R.FARM_BAD}+ −20 (red)`],
-  [`Bundles bought ${R.BUNDLE_WARN}%+ of supply`, `−10 · ${R.BUNDLE_BAD}%+ −20 (red)`],
-  [`Top 10 hold ${R.TOP10_WARN}%+ of supply (${R.MIN_HOLDERS}+ holders)`, `−10 · ${R.TOP10_BAD}%+ −20 (red)`],
-  [`Under ${R.REAL_WARN}% of volume is real (${R.MIN_VOL_TRADES}+ trades)`, `−10 · under ${R.REAL_BAD}% −20 (red)`],
-  [`Dev has ${R.TRACK_WARN_LAUNCHES}+ other launches, none graduated`, `−8 · ${R.TRACK_BAD_LAUNCHES}+ with under ${share(R.TRACK_BAD_RATE)} graduated −15 (red)`],
+// finding -> level and points off. Red caps the letter at D; critical (or two reds) makes it F.
+const COSTS: [string, string, string][] = [
+  [`The dev bought ${R.PUMP_BOUGHT}%+ of supply and sold ${R.PUMP_SOLD}%+ of it (a dev pump)`, "critical", `−${X.devPump}`],
+  [`Dev holds ${R.DEV_HOLDS_CRIT}%+ of supply`, "critical", `−${X.devHoldsCrit}`],
+  [`Dev holds ${R.DEV_HOLDS_BAD}%+ of supply`, "red", `−${X.devHoldsBad}`],
+  [`Dev holds ${R.DEV_HOLDS_WARN}%+ of supply`, "warning", `−${X.devHoldsWarn}`],
+  [`Dev sold ${R.DEV_SOLD_WARN}%+ of supply`, "warning", `−${X.devSoldWarn}`],
+  [`... and took ${R.DEV_ETH_OUT_BAD}+ ETH more out than he put in`, "red", `−${X.devSoldBad}`],
+  ["Dev moved tokens to other wallets", "warning", `−${X.devMoved}`],
+  [`Another wallet bought ${R.PUMP_BOUGHT}%+ of supply and sold ${R.PUMP_SOLD}%+ of it (a pump)`, "red + gate", `−${X.pump}`],
+  [`One wallet made ${R.GATE_TOP1}%+ of the volume`, "warning + gate", `−${X.top1Gate}`],
+  [`One wallet made ${R.TOP1_WARN}%+ of the volume`, "warning", `−${X.top1Warn}`],
+  [`Under ${R.REAL_BAD}% of volume is real while one wallet makes ${R.TOP1_WARN}%+ of it`, "red", `−${X.realBad}`],
+  [`Under ${R.REAL_WARN}% of volume is real (${R.MIN_VOL_TRADES}+ trades)`, "warning", `−${X.realWarn}`],
+  [`One holder (not the dev, not the curve or pool) has ${R.WHALE_BAD}%+ of supply`, "red", `−${X.whale}`],
+  [`Top 10 hold ${R.TOP10_CIRC_WARN}%+ of what holders hold (${R.GATE_HOLDERS}+ real holders)`, "warning", `−${X.top10Circ}`],
+  [`Snipers and farm wallets still hold ${R.SNIPERS_HOLD_WARN}%+ of supply`, "warning", `−${X.snipersHold}`],
+  [`Bundled wallets still hold ${R.BUNDLE_HELD_WARN}%+ of supply`, "warning", `−${X.bundleHeld}`],
+  [`Late entry: price ${R.LATE_X}× launch or more, holders in profit`, "warning", `−${X.late}`],
+  [`Graduated with a dead pool: under ${R.POOL_MIN_ETH} ETH, no trade in 24 h, or under ${R.POOL_MIN_HOLDERS} real holders`, "warning + gate", `−${X.deadPool}`],
+  [`Under ${R.GATE_HOLDERS} real holders or under ${R.GATE_TRADES24} trades in 24 h`, "warning + gate", `−${X.thinActivity}`],
 ];
 
 // the six tiles of a token page; a row with a glossary id is that word's anchor (the glossary below skips it)
@@ -62,29 +73,31 @@ export default function MethodologyPage() {
 
         <div className={styles.main}>
           <Sec id="grade" title="The grade">
-            <p>Every token starts at 100. Each finding takes points off.</p>
+            <p>The letter is the risk of becoming someone&rsquo;s exit liquidity if you buy now. A reads &ldquo;{GRADE_WORD.A}&rdquo;, B &ldquo;{GRADE_WORD.B}&rdquo;, C &ldquo;{GRADE_WORD.C}&rdquo;, D &ldquo;{GRADE_WORD.D}&rdquo;, F &ldquo;{GRADE_WORD.F}&rdquo;. Next to it: <b>Full check</b> when every input was read, or <b>Partial</b> with what wasn&rsquo;t checked.</p>
             <table className={styles.table}>
-              <thead><tr><th scope="col">Finding</th><th scope="col">Points</th></tr></thead>
+              <thead><tr><th scope="col">Finding</th><th scope="col">Level</th><th scope="col">Points</th></tr></thead>
               <tbody>
-                {COSTS.map(([what, cost]) => (
-                  <tr key={what}><td>{what}</td><td className={styles.num}>{cost}</td></tr>
+                {COSTS.map(([what, level, cost]) => (
+                  <tr key={what}><td>{what}</td><td>{level}</td><td className={styles.num}>{cost}</td></tr>
                 ))}
               </tbody>
             </table>
+            <p>Points are counted by family (dev, volume, concentration, front, price, activity): the biggest finding of a family counts in full, the rest a quarter, at most {R.FAMILY_CAP} per family. Then the letter:</p>
             <p className={styles.scale}>
-              <span className={styles.gA}>A 85+</span><span className={styles.gB}>B 70+</span><span className={styles.gC}>C 55+</span><span className={styles.gD}>D 40+</span><span className={styles.gF}>F under 40</span>
+              <span className={styles.gA}>A 85+</span><span className={styles.gB}>B 70+</span><span className={styles.gC}>C 55+</span><span className={styles.gD}>D under 55</span>
             </p>
-            <p>A and B read “Looks clean”, C “Caution”, D and F “High risk”. Then the caps apply:</p>
             <ul className={styles.list}>
-              <li>Any red finding: C at best.</li>
-              <li>{R.SNIPERS_WARN}+ snipers, or {share(R.SNIPERS_SHARE_WARN)} of {R.MIN_FRONT}+ first buyers: C at best.</li>
-              <li>Fewer than {R.MIN_HOLDERS} holders: C at best.</li>
-              <li>Snipers not checked (the token is older than the sniper labels cover, or the labels are unavailable): B at best.</li>
-              <li>Dev history not checked: B at best.</li>
-              <li>Dev sold {R.DEV_DUMPED}%+ of the bag: D at best.</li>
+              <li>A critical finding, or two red ones: F. F is never given for points alone.</li>
+              <li>One red finding: D at best.</li>
+              <li>Any gate: C at best. A and B also need every gate read: holders, 24 h trades, the volume split and the biggest seller.</li>
+              <li>A needs a full check and no warning at all. Otherwise B at best.</li>
             </ul>
-            <p>No grade (“Too early to grade”): under {R.MIN_AGE_MIN} minutes old, fewer than {R.MIN_TRADES} trades, fewer than {R.MIN_FRONT} first buyers, or the holders could not be read.</p>
-            <p>A read that failed takes no points and earns no praise. Good reasons need a sample: {R.MIN_FRONT}+ first buyers for “No known snipers”, {R.TOP10_GOOD_HOLDERS}+ holders for a low top 10, {R.TRACK_GOOD_LAUNCHES}+ other launches for a good dev record.</p>
+            <p>A <b>pump</b> is one wallet buying a big share of the curve and dumping it back, often into the fresh pool seconds after graduation. It leaves an empty pool, a handful of holders and a price below launch. Most tokens that used to look clean were exactly this.</p>
+            <p><b>Late entry</b>: the further the price already runs above launch, the more likely it drops next. In our backtest a 20%+ drop followed in 76–87% of tokens priced 1.3–2.4× launch, and in 3–15% of those still near it.</p>
+            <p><b>Real holders</b> bought on the market and hold more than dust. Airdrop-only and dust wallets are left out everywhere a holder count is shown; the full count is in the tooltip.</p>
+            <p>Snipers, bundles and the dev&rsquo;s other launches are shown as information. In our backtest they went with demand, not against it, so they cost points only while snipers or bundles still hold a big share of supply.</p>
+            <p>No letter: &ldquo;{NO_GRADE_WORD.young}&rdquo; (under {R.MIN_AGE_MIN} minutes old), &ldquo;{NO_GRADE_WORD.thin}&rdquo; (under {R.THIN_HOLDERS} real holders, {R.THIN_TRADES} trades or {R.MIN_FRONT} first buyers), &ldquo;{NO_GRADE_WORD.unread}&rdquo; (holders, trades or first buyers could not be read). A red finding grades the token anyway.</p>
+            <p>A read that failed takes no points, earns no praise and never passes a gate. Praise needs a full read: &ldquo;N% of volume is real&rdquo; only when no wallet makes {R.TOP1_WARN}%+ of it and wash was timed.</p>
           </Sec>
 
           <Sec id="tiles" title="The tiles">

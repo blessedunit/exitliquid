@@ -7,14 +7,15 @@ export type SortKey = "rank" | "new" | "door" | "eta" | "holders" | "vol" | "chg
 export type Dir = "desc" | "asc";
 export type BoardState = { tab: Tab; sort: SortKey; dir: Dir; period: Period; q: string; filters: FilterId[] };
 
-export const TAB_IDS: Tab[] = ["hot", "new", "door", "grad", "watch"];
-// hot / door / grad read vibe's v1 index, frozen since 29.09 (audit 15.10): hidden until they run on v6.
-// Old ?tab= links to them open New instead of a 16-day-old list.
-export const LIVE_TABS: Tab[] = ["new", "watch"];
+export const TAB_IDS: Tab[] = ["new", "hot", "door", "grad", "watch"];
+// every tab is a complete view with its own order. hot / door / grad are presets over the live v6 list
+// (lib/launches presetPage), not vibe's v1 index (frozen since 29.09)
+export const LIVE_TABS: Tab[] = TAB_IDS;
 export const DEFAULT_TAB: Tab = "new";
-export const SORT_KEYS: SortKey[] = ["rank", "new", "door", "eta", "holders", "vol", "chg", "buys", "sig"];
-export const DEFAULT_SORT: Record<Tab, SortKey> = { hot: "rank", new: "new", door: "door", grad: "rank", watch: "rank" };
-// ETA reads best soonest-first; everything else biggest-first
+// sorts a column header can pick; older links (?sort=eta, buys, sig) fall back to the tab's own order
+export const SORT_KEYS: SortKey[] = ["rank", "new", "door", "holders", "vol", "chg"];
+// hot: volume 24 h · door: closest to graduation · grad: latest graduation first (the server's order)
+export const DEFAULT_SORT: Record<Tab, SortKey> = { new: "new", hot: "vol", door: "door", grad: "rank", watch: "rank" };
 export const naturalDir = (k: SortKey): Dir => (k === "eta" ? "asc" : "desc");
 
 type Params = { get(name: string): string | null };
@@ -36,7 +37,8 @@ export function parseBoard(sp: Params): BoardState {
   const [k, d] = (sp.get("sort") ?? "").split("-");
   const sort = SORT_KEYS.find((s) => s === k) ?? DEFAULT_SORT[tab];
   const dir: Dir = d === "asc" || d === "desc" ? d : naturalDir(sort);
-  const period: Period = sp.get("p") === "1h" ? "1h" : "24h";
+  // one window on the whole board (24 h, or since launch for a younger token): an old ?p=1h link reads 24 h
+  const period: Period = "24h";
   const q = tab === "watch" ? "" : cleanQuery(sp.get("q"));
   const filters = parseFilters(sp.get("f"));
   return { tab, sort, dir, period, q, filters };

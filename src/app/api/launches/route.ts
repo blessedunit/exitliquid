@@ -1,5 +1,5 @@
 import { after } from "next/server";
-import { launchCards, launchPage, type LaunchCard, type LaunchTab } from "@/lib/launches";
+import { launchCards, launchPage, presetPage, type LaunchCard, type LaunchTab } from "@/lib/launches";
 import { ipfsImage } from "@/lib/ipfsImage";
 import { clientIp, LIMITS, rateLimit, tooMany } from "@/lib/limits";
 
@@ -32,10 +32,12 @@ export async function GET(req: Request) {
     const tab = (TABS.find((t) => t === u.searchParams.get("tab")) ?? "new") as LaunchTab;
     const q = (u.searchParams.get("q") ?? "").trim().slice(0, 64);
     const cursor = u.searchParams.get("cursor");
-    const page = await launchPage(tab, q, cursor && cursor.length < 4000 ? cursor : null);
+    const cur = cursor && cursor.length < 4000 ? cursor : null;
+    // Hot / Near graduation / Graduated are presets over the live v6 list; a search is one list for every tab
+    // (the board narrows it to the tab on the client)
+    const page = q ? await launchPage("new", q, cur) : tab === "new" ? await launchPage("new", "", cur) : await presetPage(tab, cur);
     warmImages(page.items);
-    // the door list costs vibe 6-9 s and its % moves slowly: keep it longer at the edge so viewers rarely wait on it
-    const cc = tab === "door" && !q ? "public, s-maxage=60, stale-while-revalidate=300" : "public, s-maxage=30, stale-while-revalidate=120";
+    const cc = "public, s-maxage=30, stale-while-revalidate=120";
     return Response.json(page, { headers: { "cache-control": cc } });
   } catch {
     // the directory is down right now: unknown, not "no launches"

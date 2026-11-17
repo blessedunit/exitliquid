@@ -1,10 +1,12 @@
 "use client";
 // Rankings: two leaderboards from the screener (Clean, Red flags), the same row as the home board. The reason
 // each token is where it is sits in its own row, so there is no legend and no per-metric tab.
+// Clean = A/B on a Full check with a trade in the last 6 h (lib/screener-rules cleanEligible), lower risk first,
+// then the busier line.
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Row, RowSkeleton, type Metric } from "@/components/screener/ScreenerRows";
-import { agoText, useScreener } from "@/components/screener/useScreener";
+import { agoText, byRiskThenActivity, useScreener } from "@/components/screener/useScreener";
 import type { ScreenerBoard, ScreenerRow } from "@/lib/screener-types";
 import sc from "@/components/screener/screener.module.css";
 import Loader from "@/components/ui/Loader";
@@ -53,7 +55,7 @@ function Head({ col }: { col: string }) {
 function Board({ tab }: { tab: Tab }) {
   const st = useScreener(tab.id, LIMIT);
   // loaded = the snapshot is in, even with nothing graded yet (a fresh start, new rules): that is said, not spun
-  const full = st.data ? st.data.tokens : null;
+  const full = useMemo(() => (st.data ? (tab.id === "clean" ? [...st.data.tokens].sort(byRiskThenActivity) : st.data.tokens) : null), [st.data, tab.id]);
   const [more, setMore] = useState(false);
   const rows = full && !more ? full.slice(0, PAGE) : full;
   return (

@@ -11,7 +11,7 @@
 //   pairNet + pairFee (= tx value on ETH pairs). Sell(actor, recipient) data [grossTokens, netTokens, taxTokens,
 //   pairGross, pairFee]: the seller got pairGross - pairFee.
 // - after graduation the token trades in a Uniswap V4 pool (PoolManager 0x8366…, poolId from curve.poolId());
-//   wallets trade through vibe's zap 0x2784… (PM -> zap -> buyer, seller -> zap -> PM).
+//   wallets trade through vibe's zaps (0x2784… first factory, 0xe1f8… second; PM -> zap -> buyer, seller -> zap -> PM).
 import "server-only";
 import { encodeAbiParameters, keccak256, parseAbi, toHex, type Address, type Hex } from "viem";
 import { client } from "@/lib/chain";
@@ -65,6 +65,8 @@ export type V6Market = {
   sizes: number[];
   modelCheck: number | null;
   curve: string;
+  /** the curve's start price (sold = 0: V / T of the fitted virtual reserves), pair units per token; null = unread */
+  launchSpot: number | null;
 };
 
 /* ---------------- pair facts (never change) ---------------- */
@@ -208,6 +210,7 @@ async function readMarket(token: string, curve: string): Promise<V6Market> {
       venue: "curve", pair, spot: reserves.e / reserves.t, reserves, fee, rateBps,
       realReserve: R, tokensLeft: whole(left), target, poolId: null,
       buyQuotes, sizes, modelCheck: q0 && model > 0 ? q0 / model : null, curve,
+      launchSpot: virt.V / virt.T,
     };
   }
 
@@ -230,10 +233,13 @@ async function readMarket(token: string, curve: string): Promise<V6Market> {
   const reserves = pairIs0 ? { e: r0 / 10 ** dec, t: r1 / 1e18 } : { e: r1 / 10 ** dec, t: r0 / 1e18 };
   if (!(reserves.e > 0 && reserves.t > 0)) throw new Error("pool empty");
   const sizes = sizesFor(pair.native, reserves.e);
+  // the launch price of a graduated line: the same curve fit (2 eth_calls once per curve, then cached for good)
+  const virt = await virtualOf(curve, sold + left, dec).catch(() => null);
   return {
     venue: "pool", pair, spot: reserves.e / reserves.t, reserves, fee, rateBps,
     realReserve: null, tokensLeft: null, target: null, poolId,
     buyQuotes: sizes.map(() => null), sizes, modelCheck: null, curve,
+    launchSpot: virt ? virt.V / virt.T : null,
   };
 }
 

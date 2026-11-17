@@ -17,6 +17,8 @@ export type LaunchCard = {
   createdAt: number; // unix seconds
   progressBps: number;
   graduated: boolean;
+  /** unix seconds the token graduated (v6 list only); null / absent = unknown or not graduated */
+  graduatedAt?: number | null;
   holders: number | null;
   volume24hEth: number | null;
   volume1hEth: number | null;
@@ -254,7 +256,7 @@ type V6Item = {
   tokenAddress: string; curveAddress?: string; launcherAddress?: string; name?: string; symbol?: string; createdAt?: string;
   content?: ApiContent; moderation?: { visibility?: string };
   pairCurrencyAddress?: string; pairIsNative?: boolean; pairSymbol?: string | null; targetPairUnits?: string; taxBps?: number;
-  lifecycle?: string; graduated?: boolean;
+  lifecycle?: string; graduated?: boolean; graduation?: { at?: string } | null;
   curve?: { pairReserveUnits?: string };
   market?: { holderCount?: number; volume24hPairUnits?: string; buyCount24h?: number; sellCount24h?: number; priceChange1hBps?: number | string | null };
 };
@@ -278,6 +280,7 @@ function v6Card(x: V6Item): LaunchCard {
     createdAt: Math.floor(Date.parse(x.createdAt ?? "") / 1000) || 0,
     progressBps,
     graduated,
+    graduatedAt: graduated ? Math.floor(Date.parse(x.graduation?.at ?? "") / 1000) || null : null,
     holders: num(m.holderCount),
     // volumes are in the pair currency: only an ETH pair is comparable with the rest of the board
     volume24hEth: native ? wei(m.volume24hPairUnits) : null,
@@ -472,6 +475,160 @@ export async function launchPage(tab: LaunchTab, q: string, cursor: string | nul
     asOfBlock: a?.asOfBlock ?? null,
     v6: rb.status === "fulfilled" ? "ok" : "error",
   };
+}
+
+/* ---------------- board presets (Hot / Near graduation / Graduated) over the live v6 directory ---------------- */
+// vibe's v1 index (sort=TRENDING, PROGRESS_DESC, lifecycle=GRADUATED) froze on 29.09, and /v6/launches has no sort
+// and ignores lifecycle (checked 17.11): the presets sort here. Two reads, merged (the head wins for a token in both):
+//  - head: the newest POOL_PAGES pages of 50, 30 s memo (fresh numbers for young lines; ~16 h of launches);
+//  - wide scan: SCAN_PAGES pages (~4-5 days, 17.11: 4000 launches = 156 h, 980 of them with >=10 trades or >=1 ETH
+//    a day, 620 of those older than 16 h), re-read every SCAN_EVERY_MS in the background, stale meanwhile.
+export type Preset = "hot" | "door" | "grad";
+const POOL_PAGES = 8;
+
+/* ---------------- wide v6 scan (shared by the presets and the screener's universe) ---------------- */
+
+const SCAN_PAGES = 60;
+const SCAN_EVERY_MS = 20 * 60_000;
+/** one whole scan: 60 pages took 10-15 s (0.17 s a page, 17.11); past this it stops and keeps what it read */
+const SCAN_BUDGET_MS = 75_000;
+/** the shared scan promise always settles by then, whatever a fetch does (17.10: a hung read froze a loop for 9 h) */
+const SCAN_HARD_MS = SCAN_BUDGET_MS + 15_000;
+/** a scan older than this is not served (its 24 h numbers are a claim about the past) */
+const SCAN_MAX_AGE_MS = 2 * 3600_000;
+
+export type V6Scan = { items: LaunchCard[]; at: number; pages: number; partial: boolean; ms: number };
+type ScanState = { last: V6Scan | null; running: Promise<V6Scan> | null };
+// survives a dev hot reload: one scan per process
+const SG = globalThis as unknown as { __exitV6Scan?: ScanState };
+const SC: ScanState = (SG.__exitV6Scan ??= { last: null, running: null });
+
+async function runScan(): Promise<V6Scan> {
+  const t0 = Date.now();
+  const out: LaunchCard[] = [];
+  let cursor: string | null = null;
+  let pages = 0;
+  let partial = false;
+  for (let p = 0; p < SCAN_PAGES; p++) {
+    if (Date.now() - t0 > SCAN_BUDGET_MS) {
+      partial = true;
+      break;
+    }
+    try {
+      const qs = `limit=50${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`;
+      // no data cache for deep pages: their cursors move with every new launch, each scan would leave 60 new entries
+      const r = await fetch(`${API}/v6/launches?${qs}`, { headers: HEADERS, cache: "no-store", signal: AbortSignal.timeout(8_000) });
+      if (!r.ok) throw new Error(`vibe api ${r.status}`);
+      const j = (await r.json()) as ApiPage<V6Item>;
+      out.push(...(j.data?.items ?? []).filter(visible).map(v6Card));
+      pages++;
+      const page = j.data?.page;
+      cursor = page?.hasMore && page.nextCursor ? page.nextCursor : null;
+    } catch (e) {
+      if (!out.length) throw e; // nothing at all: unknown, never "no launches"
+      partial = true;
+      break;
+    }
+    if (!cursor) break;
+  }
+  const seen = new Set<string>();
+  let items = out.filter((c) => (seen.has(c.token) ? false : (seen.add(c.token), true)));
+  // stopped early: the older part of the last full scan (still young enough) stands in for the pages not read
+  const prev = SC.last;
+  if (partial && prev && Date.now() - prev.at < SCAN_MAX_AGE_MS) {
+    const floor = items.reduce((m, c) => Math.min(m, c.createdAt || m), Infinity);
+    items = items.concat(prev.items.filter((c) => !seen.has(c.token) && c.createdAt < floor));
+  }
+  return { items, at: Date.now(), pages, partial, ms: Date.now() - t0 };
+}
+
+function startScan(): Promise<V6Scan> {
+  if (SC.running) return SC.running;
+  const p = Promise.race([runScan(), new Promise<never>((_, rej) => setTimeout(() => rej(new Error("scan timeout")), SCAN_HARD_MS))])
+    .then((v) => {
+      SC.last = v;
+      beat("directory", true);
+      return v;
+    })
+    .finally(() => { SC.running = null; });
+  SC.running = p;
+  p.catch(() => {}); // a background refresh that fails keeps the last scan; nobody else waits on it
+  return p;
+}
+
+/**
+ * The wide scan: the cached one (kicking a refresh when it is SCAN_EVERY_MS old), never older than SCAN_MAX_AGE_MS.
+ * wait = await a scan when none is usable (the screener's background loop); else null at once (a page render).
+ */
+export async function v6Scan(wait: boolean): Promise<V6Scan | null> {
+  const last = SC.last;
+  const age = last ? Date.now() - last.at : Infinity;
+  if (age > SCAN_EVERY_MS) {
+    const p = startScan();
+    if (age > SCAN_MAX_AGE_MS) return wait ? p.catch(() => null) : null;
+  }
+  return last;
+}
+
+/** head pages + wide scan, one card per token (the head's fresher card wins). Throws when neither answered. */
+export async function v6Directory(wait: boolean, revalidate = 60): Promise<{ items: LaunchCard[]; partial: boolean; scan: Omit<V6Scan, "items"> | null }> {
+  const [h, w] = await Promise.allSettled([v6Head(revalidate), v6Scan(wait)]);
+  const head = h.status === "fulfilled" ? h.value : null;
+  const scan = w.status === "fulfilled" ? w.value : null;
+  if (!head && !scan) throw (h as PromiseRejectedResult).reason;
+  const map = new Map<string, LaunchCard>();
+  for (const c of scan?.items ?? []) map.set(c.token, c);
+  for (const c of head?.items ?? []) map.set(c.token, c);
+  const meta = scan ? { at: scan.at, pages: scan.pages, partial: scan.partial, ms: scan.ms } : null;
+  return { items: [...map.values()], partial: !head || head.partial, scan: meta };
+}
+
+async function v6Pool(revalidate: number): Promise<{ items: LaunchCard[]; partial: boolean }> {
+  return v6Directory(false, revalidate);
+}
+
+async function v6Head(revalidate: number): Promise<{ items: LaunchCard[]; partial: boolean }> {
+  return memoized("pool:v6", 30_000, async () => {
+    const out: LaunchCard[] = [];
+    let cursor: string | null = null;
+    let partial = false;
+    for (let p = 0; p < POOL_PAGES; p++) {
+      try {
+        const page = await v6Page("", cursor, 50, Math.max(60, revalidate));
+        out.push(...page.items);
+        cursor = page.next;
+      } catch (e) {
+        if (!out.length) throw e; // nothing at all: unknown, never "no launches"
+        partial = true;
+        break;
+      }
+      if (!cursor) break;
+    }
+    const had = new Set<string>();
+    return { items: out.filter((c) => (had.has(c.token) ? false : (had.add(c.token), true))), partial };
+  });
+}
+
+/** null sorts last (unknown is never counted as zero) */
+const byDesc = (f: (c: LaunchCard) => number | null) => (a: LaunchCard, b: LaunchCard) => {
+  const x = f(a);
+  const y = f(b);
+  if (x === null && y === null) return b.createdAt - a.createdAt;
+  if (x === null) return 1;
+  if (y === null) return -1;
+  return y - x || b.createdAt - a.createdAt;
+};
+
+/** One page of a preset list: hot = ETH volume 24 h, door = closest to graduation (not graduated), grad = latest graduations. */
+export async function presetPage(preset: Preset, cursor: string | null, limit = 24, revalidate = 15): Promise<LaunchPage> {
+  const pool = await v6Pool(revalidate);
+  let items: LaunchCard[];
+  if (preset === "hot") items = pool.items.filter((c) => c.volume24hEth !== null && c.volume24hEth > 0).sort(byDesc((c) => c.volume24hEth));
+  else if (preset === "door") items = pool.items.filter((c) => !c.graduated).sort(byDesc((c) => c.progressBps));
+  else items = pool.items.filter((c) => c.graduated).sort(byDesc((c) => c.graduatedAt ?? null));
+  const off = cursor?.startsWith("o.") ? Math.max(0, Math.min(items.length, parseInt(cursor.slice(2), 10) || 0)) : 0;
+  const end = off + limit;
+  return { items: items.slice(off, end), next: end < items.length ? `o.${end}` : null, asOfBlock: null, v6: pool.partial ? "error" : "ok" };
 }
 
 /** Cards for a list of token addresses (the watchlist), in the order given. Missing = not found right now. */

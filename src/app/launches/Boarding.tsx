@@ -9,8 +9,8 @@ export default function BoardingRows({ count }: { count: number }) {
     <div className={styles.boarding} aria-hidden>
       {Array.from({ length: count }, (_, r) => (
         <div key={r} className={`${styles.row} ${styles.ghost}`} role="row" style={{ animationDelay: `${(r % 8) * 0.06}s` }}>
-          <div className={styles.cRank}><span className={`${styles.gBar} ${shimmer}`} style={{ width: 12 }} /></div>
           <div className={`${styles.cTok} ${styles.gTok}`}>
+            <span className={`${styles.gBadge} ${shimmer}`} />
             <span className={`${styles.gAv} ${shimmer}`} />
             <span className={styles.gNames}>
               <span className={`${styles.gBar} ${shimmer}`} style={{ width: `${40 + ((r * 37) % 30)}%` }} />
@@ -21,7 +21,6 @@ export default function BoardingRows({ count }: { count: number }) {
           <div className={styles.cDoor}><span className={`${styles.gBar} ${shimmer}`} style={{ width: "100%" }} /></div>
           <div className={styles.cIn}><span className={`${styles.gBar} ${styles.gNum} ${shimmer}`} /></div>
           <div className={styles.cVol}><span className={`${styles.gBar} ${styles.gNum} ${shimmer}`} /></div>
-          <div className={styles.cBs}><span className={`${styles.gBar} ${styles.gNum} ${shimmer}`} /></div>
           <div className={styles.cStar} />
         </div>
       ))}

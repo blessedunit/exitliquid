@@ -29,7 +29,7 @@ Charts show price. They don't show **people**. Every token on vibe/vibe is a lin
 
 | | What you get |
 |---|---|
-| **One grade** | A–F for every token: snipers among the first buyers, dev bag and sells, top-10 share, real volume, the dev's past launches. What wasn't checked caps the grade instead of counting as clean. |
+| **One grade** | A–F for every token: the risk of becoming someone's exit liquidity. Pumps by one wallet, the dev's bag and sells, volume concentration, round-trip trades, holder concentration, pool liquidity, price versus launch. A Full check / Partial marker says what could not be read; nothing unknown counts as clean. |
 | **The line** | Every holder as a pixel trader queued to the EXIT door, snipers, farms and bundles marked on the people themselves. Click anyone for their ticket. |
 | **Rankings** | The cleanest tokens right now and the worst red flags, re-checked every few minutes. |
 | **Bundle check** | Supply bought in the same transaction or block, launch-block and first-minute buyers, shared funders, with tx links as proof. |

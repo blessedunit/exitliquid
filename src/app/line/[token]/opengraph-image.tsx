@@ -11,8 +11,8 @@ import { analyticsV6, isKnownV6 } from "@/lib/analytics/v6engine";
 import { buildFor } from "@/lib/service";
 import { pct } from "@/lib/format";
 import { devTrackOf, ON_CF, snapshot } from "@/lib/screener";
-import { screen } from "@/lib/screener-rules";
-import { VERDICT_LABEL } from "@/lib/screener-types";
+import { isCurrent, screen } from "@/lib/screener-rules";
+import { isFullCheck, standingWord, type Grade, type ScreenerMetrics } from "@/lib/screener-types";
 import { cachedCard, CardFrame, clean, crowd, pixelAvatar, shortA, within, type CardChip, type CardFact, type Tone } from "@/lib/shareCard";
 
 export const alt = "Grade and front-of-line signals of a vibe/vibe token";
@@ -57,12 +57,13 @@ export default async function Image({ params }: { params: Promise<{ token: strin
     // 1. snipers in the first buyers
     const old = !!a && !!a.indexWindowDays && a.ageSec != null && a.ageSec > a.indexWindowDays * 86_400;
     if (h && h.snipers !== null && !old) {
-      facts.push({ value: String(h.snipers), label: `${h.snipers === 1 ? "sniper" : "snipers"} in first ${h.firstBuyers}`, tone: h.snipers >= 12 ? "bad" : h.snipers >= 6 ? "warn" : "good" });
+      // information, not a verdict (v11: snipers go with demand; the grade counts them only while they hold 15%+)
+      facts.push({ value: String(h.snipers), label: `${h.snipers === 1 ? "sniper" : "snipers"} in first ${h.firstBuyers}`, tone: "plain" });
     } else facts.push({ value: "—", label: old ? "snipers: not checked" : "snipers: unknown" });
     // 2. the dev's bag
     if (supply && supply.creatorPct !== null) {
       const sold = supply.devSells !== null && supply.devSells > 0;
-      facts.push({ value: pct(supply.creatorPct), label: sold ? `dev holds · sold ${supply.devSells}×` : "dev holds", tone: supply.creatorPct >= 5 || sold ? "warn" : "plain" });
+      facts.push({ value: pct(supply.creatorPct), label: sold ? `dev holds · sold ${supply.devSells}×` : "dev holds", tone: supply.creatorPct >= 20 ? "bad" : supply.creatorPct >= 10 ? "warn" : "plain" });
     } else facts.push({ value: "—", label: "dev bag: unknown" });
     // 3. walk to the door
     if (graduated) facts.push({ value: "100%", label: "graduated", tone: "good" });
@@ -79,23 +80,25 @@ export default async function Image({ params }: { params: Promise<{ token: strin
       .map((c) => ({ label: clean(c.label, 24), tone: c.level === "high" ? "bad" : "warn" }));
 
     // one holders figure, as on the page: the chain's (Supply) once in, vibe's until then
-    const nHolders = supply?.holders ?? (typeof info?.holders === "number" ? info.holders : null);
-    const holders = nHolders !== null ? `${nHolders.toLocaleString("en-US")} holders` : null;
+    // real holders (bought in, more than dust) once the chain read has them, as on the page; vibe's count until then
+    const real = typeof supply?.realHolders === "number" ? supply.realHolders : null;
+    const nHolders = real ?? supply?.holders ?? (typeof info?.holders === "number" ? info.holders : null);
+    const holders = nHolders !== null ? `${nHolders.toLocaleString("en-US")} ${real !== null ? "real holders" : "holders"}` : null;
     const subtitle = [name, holders].filter(Boolean).join(" · ");
     // the letter the page shows: the screener's row (same rules, with the dev's track and the age), else the same
-    // rules on this answer; Line health only when neither is in
-    const row = ON_CF ? null : snapshot().tokens.find((r) => r.token === token && r.grade !== null) ?? null;
-    let graded: { grade: string | null; score: number | null; verdict: keyof typeof VERDICT_LABEL } | null = row;
+    // rules on this answer. A row graded under older rules is not this site's grade any more: never drawn
+    const row = ON_CF ? null : snapshot().tokens.find((r) => r.token === token && r.grade !== null && isCurrent(r)) ?? null;
+    let graded: { grade: Grade | null; score: number | null; metrics: ScreenerMetrics } | null = row;
     if (!graded && a) {
       // the page's inputs: the answer's own age and index window (screen() reads them) and the dev's track record
       const dev = Object.entries(a.tags).find(([, v]) => v === "dev")?.[0] ?? info?.creator ?? null;
       const track = dev ? (await within(devTrackOf(dev.toLowerCase(), token), 3_000)) ?? null : null;
       try { graded = screen({ a, ageMin: null, track, ethUsd: null }); } catch { graded = null; }
     }
-    const big = graded && graded.grade && graded.score !== null
-      ? { value: graded.grade, label: "GRADE", sub: `${graded.score}/100 · ${VERDICT_LABEL[graded.verdict]}`, tone: gradeTone(graded.grade), letter: true }
-      : graded && graded.verdict === "unknown"
-      ? { value: "?", label: "GRADE", sub: VERDICT_LABEL.unknown, tone: "plain" as Tone, letter: true }
+    const big = graded && graded.grade
+      ? { value: graded.grade, label: "GRADE", sub: `${standingWord(graded.grade)} · ${isFullCheck(graded.metrics.coverage) ? "Full check" : "Partial check"}`, tone: gradeTone(graded.grade), letter: true }
+      : graded
+      ? { value: "?", label: "GRADE", sub: standingWord(null, graded.metrics.noGrade), tone: "plain" as Tone, letter: true }
       : { value: "?", label: "GRADE", sub: "not read yet", tone: "plain" as Tone, letter: true };
 
     const full = !!(info && h && bundle && supply && (avatar !== null || !info.image));

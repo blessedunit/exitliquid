@@ -99,3 +99,6 @@ a.row:focus-visible { outline: 2px solid var(--exit); outline-offset: -2px; }
 @media (max-width: 640px) {
   .scaleList { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
 }
+/* the coverage marker next to the letter: quiet, "Full check" a touch brighter */
+.cover { color: var(--t3); font: 400 11px/16px var(--f-ui); white-space: nowrap; }
+.coverFull { color: var(--t2); }

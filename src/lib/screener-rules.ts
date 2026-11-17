@@ -1,67 +1,112 @@
-// Screener rules: every threshold, penalty and reason text of the token check, in ONE place.
+// Screener rules v11: every threshold, penalty and reason text of the token check, in ONE place.
 // Pure (no server imports): the screener warm loop (lib/screener.ts) and the token report both call screen()
 // on the same /api/analytics answer, so the board and the report always show the same letter and reasons.
 //
-// Score: 100 minus the penalties below. Letter: lib/health gradeFor (A 85+, B 70+, C 55+, D 40+, F), and any
-// "bad" reason caps the letter at C (capGrade). Verdict: A/B clean, C caution, D/F risk.
-// No letter ("Too early to grade"): younger than MIN_AGE_MIN or of unknown age, fewer than MIN_TRADES trades,
-// fewer than MIN_FRONT first buyers, or the holders / trades could not be read. Unknown inputs are never penalised, never
-// shown as 0 and never praised: a green reason needs a minimum sample behind it.
+// The letter is the risk of becoming someone's exit liquidity (A "No red flags found" .. F "Likely exit liquidity"),
+// and a separate coverage marker says how much of it was read ("Full check" / "Partial: <what wasn't checked>").
+// Why v11 (audit 17.11, backtest of v9/v10 against what happened next): the old letter did not predict outcomes.
+// Most live A were graduation pumps (one fresh wallet bought the curve out and dumped it into the pool within
+// seconds, top wallet 55-88% of volume, ~10 holders); snipers and dev sells went WITH demand, not against it;
+// what separates outcomes is activity (real holders, trades) and how far the price already ran above launch.
+//
+//   score   100 minus the penalties, counted by family (Dev, Volume, Concentration, Front, Price, Activity): inside
+//           a family the biggest penalty + 25% of the rest, capped at FAMILY_CAP. Letter by score (lib/health gradeFor).
+//   caps    a critical fact or two red facts: F (and only they: a low score alone is D). One red fact: D at best.
+//           A hard gate: C at best (no A/B).
+//           A needs a Full check and no flag at all; anything less is B at best.
+//   gates   one wallet made 50%+ of the volume; a wallet bought 20%+ of supply and sold 80%+ of it; a graduated line
+//           with a dead pool; fewer than 20 real holders or 25 trades in 24 h. A/B also need every gate input READ.
+//   no letter  "Too new" (under 10 min or age unknown), "Not enough trading yet" (under 10 real holders, 10 trades
+//           or 5 first buyers), "Couldn't read" (holders / trades / first buyers unread). A red fact grades anyway.
+// Unknown inputs are never penalised as facts, never shown as 0, never praised, and never open a gate.
 import type { Analytics, VolWindow } from "@/lib/analytics/types";
-import { capGrade, gradeFor } from "@/lib/health";
-import type { Grade, ReasonLevel, ScreenerMetrics, ScreenerReason, ScreenerRow, Verdict } from "@/lib/screener-types";
+import { gradeFor } from "@/lib/health";
+import type { Grade, NoGrade, ReasonLevel, ScreenerMetrics, ScreenerReason, ScreenerRow, Verdict } from "@/lib/screener-types";
 
 /** bump on any rule change: the warm loop re-grades every row graded under another version first */
-export const RULES_VERSION = 9;
+export const RULES_VERSION = 11;
 
 /** graded under these rules (ScreenerRow.rulesV) */
 export const isCurrent = (r: ScreenerRow) => r.rulesV === RULES_VERSION;
 /** A row as it may leave the server: one graded under other rules carries no letter, no score and no reasons
- *  (an old letter is not this site's grade any more); it reads "Too early to grade" until the loop re-grades it. */
-export const presentRow = (r: ScreenerRow): ScreenerRow => (isCurrent(r) ? r : { ...r, grade: null, score: null, verdict: "unknown", reasons: [] });
+ *  (an old letter is not this site's grade any more); it reads "Checking…" until the loop re-grades it. */
+export const presentRow = (r: ScreenerRow): ScreenerRow =>
+  isCurrent(r) ? r : { ...r, grade: null, score: null, verdict: "unknown", reasons: [], metrics: { ...r.metrics, noGrade: "pending", coverage: undefined } };
 
 export const RULES = {
   MIN_AGE_MIN: 10,
-  MIN_TRADES: 10,
-  /** also the sample behind "No known snipers": fewer first buyers say nothing */
+  /** thin: under any of these there is no letter (unless a red fact) */
+  THIN_HOLDERS: 10,
+  THIN_TRADES: 10,
   MIN_FRONT: 5,
-  /** trades of known size in the window behind any volume reason (wash, bots, real): fewer say nothing */
+  /** trades of known size in the window behind any volume reason: fewer say nothing */
   MIN_VOL_TRADES: 10,
-  /** fewer holders than this: nobody is in the token, so never a clean letter (C at best) */
-  MIN_HOLDERS: 10,
-  /** "Top 10 hold only N%" is praise only with a real crowd behind it */
-  TOP10_GOOD_HOLDERS: 30,
   /** reasons shown next to the letter */
   MAX_REASONS: 3,
-  /** the Cleanest board only lists lines with real activity */
-  CLEAN_MIN_HOLDERS: 10,
-  CLEAN_MIN_TRADES24: 10,
 
-  DEV_SOLD_BAD: 50, DEV_SOLD_WARN: 15, DEV_SOLD_SOME: 5,
-  /** the dev dumped (most of) the bag: never better than D, whatever else looks fine */
-  DEV_DUMPED: 80,
-  DEV_HOLDS_BAD: 30, DEV_HOLDS_WARN: 15,
-  SNIPERS_BAD: 12, SNIPERS_WARN: 6, SNIPERS_SHARE_BAD: 0.6, SNIPERS_SHARE_WARN: 0.5,
-  FARM_BAD: 6, FARM_WARN: 2,
-  BUNDLE_BAD: 25, BUNDLE_WARN: 10,
-  TOP10_BAD: 60, TOP10_WARN: 35, TOP10_GOOD: 20,
-  REAL_BAD: 20, REAL_WARN: 50, REAL_GOOD: 70,
-  /** dev track: other launches and graduation rate */
-  TRACK_BAD_LAUNCHES: 10, TRACK_BAD_RATE: 0.1, TRACK_WARN_LAUNCHES: 3,
-  /** a good graduation rate is praise only over this many other launches */
-  TRACK_GOOD_LAUNCHES: 3, TRACK_GOOD_RATE: 0.5,
+  // ---- hard gates: no A/B ----
+  /** one wallet made this % of the window's volume */
+  GATE_TOP1: 50,
+  /** activity: fewer real holders / trades in 24 h */
+  GATE_HOLDERS: 20,
+  GATE_TRADES24: 25,
+  /** pump: one wallet bought this % of supply (peak position) and sold this % of what it bought */
+  PUMP_BOUGHT: 20,
+  PUMP_SOLD: 80,
+  /** graduated line, dead pool: pair side under this, no trade in 24 h, or fewer real holders than this */
+  POOL_MIN_ETH: 1,
+  POOL_MIN_HOLDERS: 30,
+
+  // ---- Dev family ----
+  DEV_HOLDS_CRIT: 40,
+  DEV_HOLDS_BAD: 20,
+  DEV_HOLDS_WARN: 10,
+  /** dev sold this % of TOTAL supply: a warning on its own */
+  DEV_SOLD_WARN: 10,
+  /** ... red only with this much ETH taken out over what it put in (ETH pairs) */
+  DEV_ETH_OUT_BAD: 1,
+
+  // ---- Volume family ----
+  TOP1_WARN: 35,
+  REAL_BAD: 20,
+  REAL_WARN: 40,
+  REAL_GOOD: 70,
+
+  // ---- Concentration family ----
+  /** one holder (not the dev, not the curve / pool) holds this % of supply */
+  WHALE_BAD: 20,
+  /** top 10 hold this % of what people hold (with GATE_HOLDERS+ real holders) */
+  TOP10_CIRC_WARN: 80,
+
+  // ---- Front family: snipers / bundles are information, a penalty only while they still hold a lot ----
+  SNIPERS_HOLD_WARN: 15,
+  BUNDLE_HELD_WARN: 25,
+
+  // ---- Price family ----
+  /** "Late entry": market cap this many times the launch market cap (audit A: a 20%+ drop was 76-87% likely at
+   *  1.6-3 ETH against a 1.25 ETH launch, 3-15% under 1.6) */
+  LATE_X: 1.3,
+
+  FAMILY_CAP: 40,
+  FAMILY_REST: 0.25,
+  /** Rankings "Clean": a trade within this many hours */
+  CLEAN_RECENT_H: 6,
 } as const;
 
-const P = {
-  devSoldBad: 30, devSoldWarn: 15, devSoldSome: 5,
-  devHoldsBad: 20, devHoldsWarn: 10,
-  sniperEach: 3, sniperMax: 36,
-  farmBad: 20, farmWarn: 10,
-  bundleBad: 20, bundleWarn: 10,
-  top10Bad: 20, top10Warn: 10,
-  realBad: 20, realWarn: 10,
-  trackBad: 15, trackWarn: 8,
+/** points off per finding (the /methodology table reads them) */
+export const POINTS = {
+  devHoldsCrit: 40, devHoldsBad: 25, devHoldsWarn: 10,
+  devPump: 40, devSoldBad: 25, devSoldWarn: 10, devMoved: 5,
+  pump: 25, top1Gate: 15, top1Warn: 8, realBad: 20, realWarn: 8,
+  whale: 25, top10Circ: 10,
+  snipersHold: 10, bundleHeld: 10,
+  late: 15,
+  deadPool: 15, thinActivity: 10,
 };
+
+const P = POINTS;
+
+type Family = "dev" | "volume" | "conc" | "front" | "price" | "activity";
 
 /** partial = vibe's taxed-v6 list did not answer: the counts are a lower bound (enough to blame, not to praise) */
 export type DevTrack = { launches: number; graduated: number; partial?: boolean } | null;
@@ -114,7 +159,9 @@ export type ScreenResult = {
 
 const r1 = (v: number) => Math.round(v * 10) / 10;
 const pctTxt = (v: number) => `${v >= 10 ? Math.round(v) : r1(v)}%`;
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
+const dur = (s: number) => (s < 90 ? `${Math.max(1, Math.round(s))} s` : s < 5400 ? `${Math.round(s / 60)} min` : s < 172_800 ? `${Math.round(s / 3600)} h` : `${Math.round(s / 86_400)} d`);
+const numTxt = (v: number) => (v >= 10 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2));
 
 /** trades whose size is known: the sample behind a volume share */
 const sized = (w: VolWindow) => w.trades - w.unknownTrades;
@@ -138,7 +185,18 @@ function predatesIndex(inp: ScreenInput): boolean {
 const windowOf = (inp: ScreenInput) => inp.a.indexWindowDays ?? null;
 const ageOf = (inp: ScreenInput) => inp.ageMin ?? (inp.a.ageSec != null ? Math.floor(inp.a.ageSec / 60) : null);
 
-function metricsOf(inp: ScreenInput): ScreenerMetrics & { tradesAll: number | null; volTrades: number } {
+/** real holders: the engine's count (bought on the market, non-dust bag); an older answer without it: every holder
+ *  minus the airdrop-only wallets (an upper bound: dust is still in, said by the coverage marker) */
+function realHoldersOf(a: Analytics): { n: number | null; exact: boolean } {
+  const sup = a.supply.data;
+  if (!sup) return { n: null, exact: false };
+  if (typeof sup.realHolders === "number") return { n: sup.realHolders, exact: true };
+  return { n: Math.max(0, sup.holders - (a.v6?.gifts?.onlyGiftHolders ?? 0)), exact: false };
+}
+
+type Extra = { tradesAll: number | null; volTrades: number; win: VolWindow | null; top1VolPct: number | null; launchX: number | null; poolEth: number | null; lastTradeAt: number | null };
+
+function metricsOf(inp: ScreenInput): ScreenerMetrics & Extra {
   const { a, track, ethUsd } = inp;
   const old = predatesIndex(inp);
   const sup = a.supply.data;
@@ -156,6 +214,9 @@ function metricsOf(inp: ScreenInput): ScreenerMetrics & { tradesAll: number | nu
   const priced = em ? em.exactCost + em.estimatedCost : 0;
   const usd = (v: number | null) => (native && ethUsd !== null && v !== null ? Math.round(v * ethUsd) : null);
   const vol24Pair = day ? day.volumeEth : null;
+  const pu = sup?.pusher ?? null;
+  const conc = w?.concentration ?? null;
+  const launch = mk?.launchMcapEth ?? null;
   return {
     snipers20: old ? null : a.health?.snipers ?? null,
     bundledPct: bun ? r1(bun.boughtPct) : null,
@@ -166,7 +227,8 @@ function metricsOf(inp: ScreenInput): ScreenerMetrics & { tradesAll: number | nu
     washPct: vol ? r1((w!.washEth / vol) * 100) : null,
     botPct: vol && w!.botEth !== null && !old ? r1((w!.botEth / vol) * 100) : null,
     profitPct: em && priced > 0 ? r1((em.profitHolders / priced) * 100) : null,
-    holders: sup ? sup.holders : null,
+    holders: realHoldersOf(a).n,
+    holdersAll: sup ? sup.holders : null,
     mcap: usd(mk?.mcapEth ?? null),
     vol24h: usd(vol24Pair),
     realVol24h: usd(day ? day.realEth : null),
@@ -174,148 +236,207 @@ function metricsOf(inp: ScreenInput): ScreenerMetrics & { tradesAll: number | nu
     vol24hPair: vol24Pair,
     pairUnit: a.unit?.symbol ?? "ETH",
     trades24h: day ? day.trades : null,
-    tradesAll: all ? all.trades : null,
-    volTrades: w ? sized(w) : 0,
     devLaunches: track ? track.launches : null,
     devGraduated: track ? track.graduated : null,
+    top1VolPct: conc ? r1(conc.top1Pct) : null,
+    pusherBoughtPct: pu ? r1(pu.boughtPct) : null,
+    pusherSoldPct: pu ? r1(pu.soldPctOfBought) : null,
+    pusherIsDev: pu ? pu.isDev : null,
+    poolEth: mk?.poolEth ?? null,
+    lastTradeAt: mk?.lastTradeAt ?? null,
+    launchX: mk?.mcapEth != null && launch && launch > 0 ? Math.round((mk.mcapEth / launch) * 100) / 100 : null,
+    tradesAll: all ? all.trades : null,
+    volTrades: w ? sized(w) : 0,
+    win: w,
   };
 }
 
-type R = ScreenerReason & { p: number };
+/** p = points off, s = sort weight among reasons of one level (the gate reasons explain the letter: shown first) */
+type R = ScreenerReason & { p: number; f: Family | null; s: number; critical: boolean };
 
 /** The check of one token. Pure: same input, same letter, same reasons. */
 export function screen(inp: ScreenInput): ScreenResult {
   const { a } = inp;
   const m = metricsOf(inp);
-  const { tradesAll, volTrades, ...metrics } = m;
+  const { tradesAll, volTrades, win, ...metrics } = m;
   const out: R[] = [];
-  const add = (id: string, text: string, level: ReasonLevel, p: number) => out.push({ id, text, level, p });
+  const add = (id: string, text: string, level: ReasonLevel, f: Family | null, p: number, s = p, critical = false) =>
+    out.push({ id, text, level, p, f, s, critical });
   const sup = a.supply.data;
+  const vd = a.volume.data;
+  const native = a.unit ? a.unit.native : true;
+  const unit = a.unit?.symbol ?? "ETH";
+  const nowSec = Math.floor((a.computedAt || Date.now()) / 1000);
+  const age = ageOf(inp);
+  const realH = realHoldersOf(a);
+  const gifted = a.v6?.gifts?.onlyGiftHolders ?? 0;
+  /** what the check could not read: any item = Partial (A needs none) */
+  const coverage: string[] = [];
+  /** a gate input that was not read: no gate is shown to be passed, so no A/B */
+  let gateUnknown = false;
+  let gate = false;
 
-  // ---- dev sold ----
-  if (m.devSoldPct !== null) {
-    if (m.devSoldPct >= RULES.DEV_SOLD_BAD) add("devSold", `Dev sold ${pctTxt(m.devSoldPct)}`, "bad", P.devSoldBad);
-    else if (m.devSoldPct >= RULES.DEV_SOLD_WARN) add("devSold", `Dev sold ${pctTxt(m.devSoldPct)}`, "warn", P.devSoldWarn);
-    else if (m.devSoldPct >= RULES.DEV_SOLD_SOME) add("devSold", `Dev sold ${pctTxt(m.devSoldPct)}`, "warn", P.devSoldSome);
-    else if (m.devSoldPct === 0 && sup?.devSells === 0 && !sup.devMovedTo) add("devSold", "Dev hasn't sold", "good", 0);
+  // ---- pump: one wallet bought a big share of supply and sold it back (the graduation pump of audit 17.11) ----
+  const pu = sup?.pusher ?? null;
+  if (sup && !pu) { coverage.push("big sellers not read"); gateUnknown = true; }
+  const pump = !!pu && pu.boughtPct >= RULES.PUMP_BOUGHT && pu.soldPctOfBought >= RULES.PUMP_SOLD;
+  if (pu && pump) {
+    gate = true;
+    const fast = pu.firstBuyAt !== null && pu.lastSellAt !== null && pu.lastSellAt >= pu.firstBuyAt ? ` within ${dur(pu.lastSellAt - pu.firstBuyAt)}` : "";
+    const what = `bought ${pctTxt(pu.boughtPct)} of supply and sold ${pctTxt(pu.soldPctOfBought)} of it${fast}`;
+    // the dev pumping his own line: likely exit liquidity. Creator unknown: the wallet's pump, no more
+    // a third-party flip on a line nobody else is in (bots flip most fresh curves): a fact, not a lure. It turns
+    // red once the line has a crowd it could have pulled in; the dev doing it is always red
+    const crowdless = realH.n !== null && tradesAll !== null && (realH.n < RULES.THIN_HOLDERS || tradesAll < RULES.THIN_TRADES);
+    if (pu.isDev === true) add("pump", `Dev ${what}`, "bad", "dev", P.devPump, 100, true);
+    else if (crowdless) add("pump", `One wallet ${what}`, "warn", "volume", P.top1Gate, 60);
+    else add("pump", `One wallet ${what}`, "bad", "volume", P.pump, 100);
   }
-  // dev moved tokens to other wallets (a quiet way to sell later)
-  if (sup?.devMovedTo && sup.devMovedTo > 0) add("devMoved", `Dev moved tokens to ${plural(sup.devMovedTo, "wallet")}`, "warn", 5);
 
-  // ---- dev holds ----
+  // ---- dev ----
   if (m.devHoldsPct !== null) {
-    if (m.devHoldsPct >= RULES.DEV_HOLDS_BAD) add("devHolds", `Dev holds ${pctTxt(m.devHoldsPct)}`, "bad", P.devHoldsBad);
-    else if (m.devHoldsPct >= RULES.DEV_HOLDS_WARN) add("devHolds", `Dev holds ${pctTxt(m.devHoldsPct)}`, "warn", P.devHoldsWarn);
+    const t = `Dev holds ${pctTxt(m.devHoldsPct)} of supply`;
+    if (m.devHoldsPct >= RULES.DEV_HOLDS_CRIT) add("devHolds", t, "bad", "dev", P.devHoldsCrit, 90, true);
+    else if (m.devHoldsPct >= RULES.DEV_HOLDS_BAD) add("devHolds", t, "bad", "dev", P.devHoldsBad);
+    else if (m.devHoldsPct >= RULES.DEV_HOLDS_WARN) add("devHolds", t, "warn", "dev", P.devHoldsWarn);
   }
+  const soldSup = sup?.devSoldSupplyPct ?? null;
+  if (sup && (soldSup === null || m.devHoldsPct === null)) coverage.push("dev wallet not read");
+  // a dev pump already says it (and grades F): no second reason for the same sells
+  if (soldSup !== null && soldSup >= RULES.DEV_SOLD_WARN && !(pump && pu?.isDev === true)) {
+    const net = native && sup!.devEthOut != null ? sup!.devEthOut - (sup!.devEthIn ?? 0) : null;
+    // the ETH side unread on an ETH pair: the sells can't be shown to be small, so not a full check
+    if (native && net === null) coverage.push("dev ETH not read");
+    if (net !== null && net >= RULES.DEV_ETH_OUT_BAD) add("devSold", `Dev sold ${pctTxt(soldSup)} of supply, ${numTxt(net)} ${unit} more out than in`, "bad", "dev", P.devSoldBad);
+    else add("devSold", `Dev sold ${pctTxt(soldSup)} of supply`, "warn", "dev", P.devSoldWarn);
+  }
+  if (sup?.devMovedTo && sup.devMovedTo > 0) add("devMoved", `Dev moved tokens to ${plural(sup.devMovedTo, "wallet")}`, "warn", "dev", P.devMoved);
 
-  // ---- snipers / farms up front ----
-  const n = a.health?.firstBuyers ?? 0;
-  if (m.snipers20 !== null && n > 0) {
-    // known sniper bots are the norm on vibe (median 11 of the first 20, lib/health): the count AND the share
-    const s = m.snipers20;
-    const share = s / n;
-    const p = Math.min(P.sniperMax, P.sniperEach * s);
-    const txt = n === 1 ? "First buyer is a sniper" : `${plural(s, "sniper")} in first ${n} buyers`;
-    if (s >= RULES.SNIPERS_BAD || (n >= 10 && share >= RULES.SNIPERS_SHARE_BAD)) add("snipers", txt, "bad", p);
-    else if (s >= RULES.SNIPERS_WARN || (n >= RULES.MIN_FRONT && share >= RULES.SNIPERS_SHARE_WARN)) add("snipers", txt, "warn", p);
-    else if (s > 0) add("snipers", txt, "warn", p);
-    else if (n >= RULES.MIN_FRONT) add("snipers", `No known snipers in first ${n} buyers`, "good", 0);
+  // ---- volume: who makes it, and how much of it is real ----
+  if (!vd || !win) gateUnknown = true;
+  else if (m.top1VolPct === null) { coverage.push("volume split not read"); gateUnknown = true; }
+  if (m.top1VolPct !== null) {
+    const t = `${win?.concentration?.topIsDev === true ? "Dev" : "One wallet"} made ${pctTxt(m.top1VolPct)} of ${win?.label === "24h" ? "24h " : ""}volume`;
+    if (m.top1VolPct >= RULES.GATE_TOP1) { gate = true; add("top1", t, "warn", "volume", P.top1Gate, 60); }
+    else if (m.top1VolPct >= RULES.TOP1_WARN) add("top1", t, "warn", "volume", P.top1Warn);
   }
-  const farm = predatesIndex(inp) ? null : a.health?.farm ?? null;
-  if (farm !== null && n > 0) {
-    if (farm >= RULES.FARM_BAD) add("farm", `${farm} of first ${n} are one farm`, "bad", P.farmBad);
-    else if (farm >= RULES.FARM_WARN) add("farm", `${farm} of first ${n} are farm wallets`, "warn", P.farmWarn);
-  }
-
-  // ---- bundles at launch ----
-  if (m.bundledPct !== null) {
-    if (m.bundledPct >= RULES.BUNDLE_BAD) add("bundle", `Bundles bought ${pctTxt(m.bundledPct)} of supply`, "bad", P.bundleBad);
-    else if (m.bundledPct >= RULES.BUNDLE_WARN) add("bundle", `Bundles bought ${pctTxt(m.bundledPct)} of supply`, "warn", P.bundleWarn);
-  }
-
-  // ---- concentration ----
-  if (m.top10Pct !== null && (m.holders ?? 0) >= RULES.MIN_HOLDERS) {
-    if (m.top10Pct >= RULES.TOP10_BAD) add("top10", `Top 10 hold ${pctTxt(m.top10Pct)}`, "bad", P.top10Bad);
-    else if (m.top10Pct >= RULES.TOP10_WARN) add("top10", `Top 10 hold ${pctTxt(m.top10Pct)}`, "warn", P.top10Warn);
-    else if (m.top10Pct < RULES.TOP10_GOOD && (m.holders ?? 0) >= RULES.TOP10_GOOD_HOLDERS) add("top10", `Top 10 hold only ${pctTxt(m.top10Pct)}`, "good", 0);
-  }
-
-  // ---- real volume ----
-  if (m.realVolPct !== null && volTrades >= RULES.MIN_VOL_TRADES) {
+  const washKnown = !!vd && vd.dust !== null && typeof vd.washWindowSec === "number" && !vd.washWindowUnknown;
+  if (vd && !washKnown) coverage.push("wash partly checked");
+  // a pump's own round trip IS the wash: the pump reason already says it (one fact, one reason, one red)
+  if (m.realVolPct !== null && volTrades >= RULES.MIN_VOL_TRADES && !pump) {
     const wash = m.washPct ?? 0;
     const bot = m.botPct ?? 0;
     const fake = wash >= bot ? `${pctTxt(wash)} of volume is wash` : `Bots made ${pctTxt(bot)} of volume`;
-    if (m.realVolPct < RULES.REAL_BAD) add("volume", fake, "bad", P.realBad);
-    else if (m.realVolPct < RULES.REAL_WARN) add("volume", fake, "warn", P.realWarn);
-    // praise only on a full check: bot labels cover the line, and dust was taken out (token pair of unknown scale: not)
-    else if (m.realVolPct >= RULES.REAL_GOOD && m.botPct !== null && a.volume.data?.dust !== null) add("volume", `${pctTxt(m.realVolPct)} of volume is real`, "good", 0);
+    if (m.realVolPct < RULES.REAL_BAD && m.top1VolPct !== null && m.top1VolPct >= RULES.TOP1_WARN) add("volume", `Only ${pctTxt(m.realVolPct)} of volume is real`, "bad", "volume", P.realBad);
+    else if (m.realVolPct < RULES.REAL_WARN) add("volume", fake, "warn", "volume", P.realWarn);
+    // praise only on a full read: one wallet is not the volume, wash timed, dust out, bot labels cover the line
+    else if (m.realVolPct >= RULES.REAL_GOOD && m.top1VolPct !== null && m.top1VolPct < RULES.TOP1_WARN && washKnown && m.botPct !== null)
+      add("volume", `${pctTxt(m.realVolPct)} of volume is real`, "good", null, 0);
   }
 
-  // ---- dev track record ----
-  const t = inp.track;
-  if (t) {
-    const txt = `Dev: ${plural(t.launches, "other launch", "other launches")}, ${t.graduated} graduated`;
-    if (t.launches >= RULES.TRACK_BAD_LAUNCHES && t.graduated / t.launches < RULES.TRACK_BAD_RATE) add("devTrack", txt, "bad", P.trackBad);
-    else if (t.launches >= RULES.TRACK_WARN_LAUNCHES && t.graduated === 0) add("devTrack", txt, "warn", P.trackWarn);
-    // praise only from the whole history (a partial one may hide the launches that did not graduate)
-    else if (t.partial) { /* a lower bound says nothing good */ }
-    else if (t.launches >= RULES.TRACK_GOOD_LAUNCHES && t.graduated / t.launches >= RULES.TRACK_GOOD_RATE) add("devTrack", txt, "good", 0);
-    else if (t.launches === 0) add("devTrack", "Dev's first launch", "good", 0);
+  // ---- concentration ----
+  if (sup) {
+    const whale = sup.top10.filter((x) => !x.flags.includes("creator")).reduce((b, x) => (x.pct > b ? x.pct : b), 0);
+    if (whale >= RULES.WHALE_BAD) add("whale", `One holder has ${pctTxt(whale)} of supply`, "bad", "conc", P.whale);
+    if (realH.n !== null && realH.n >= RULES.GATE_HOLDERS && sup.top10OfCirculatingPct >= RULES.TOP10_CIRC_WARN)
+      add("top10", `Top 10 hold ${pctTxt(sup.top10OfCirculatingPct)} of what holders hold`, "warn", "conc", P.top10Circ);
+    if (!realH.exact) coverage.push("dust holders not separated");
   }
 
-  // ---- nobody home: a token a handful of wallets hold can't be "clean", whatever the other numbers say ----
-  const fewHolders = m.holders !== null && m.holders < RULES.MIN_HOLDERS;
-  // sniper labels unknown: the line predates the wallet index, or the index is too old / missing
+  // ---- front: snipers / farms / bundles are information; a penalty only while they still hold a lot ----
   const old = predatesIndex(inp);
-  const snipersUnknown = m.snipers20 === null && n >= RULES.MIN_FRONT;
-  // the creator's other launches did not load (or the creator is unknown): not "a first launch", not checked
-  const trackUnknown = inp.track === null;
-  // ... or only half of vibe's lists answered: the counts are a lower bound
-  const trackPartial = !!inp.track?.partial;
-  // token pair of unknown scale: dust trades were not taken out, so the wash share is a lower bound
-  const dustUnknown = a.volume.data?.dust === null;
-  const age = ageOf(inp);
+  const n = a.health?.firstBuyers ?? 0;
+  if (sup && m.snipers20 !== null) {
+    // the top 10 only: a lower bound of what labelled wallets hold (enough to blame, never to clear)
+    const held = sup.top10.filter((x) => x.flags.includes("sniper") || x.flags.includes("farm")).reduce((t, x) => t + x.pct, 0);
+    if (held >= RULES.SNIPERS_HOLD_WARN) add("snipers", `Snipers and farm wallets hold ${pctTxt(held)} of supply`, "warn", "front", P.snipersHold);
+  }
+  if (m.snipers20 === null && n >= RULES.MIN_FRONT) coverage.push(old && age !== null ? `snipers not checked (older than ${plural(windowOf(inp) ?? 0, "day")})` : "snipers not checked");
+  const bun = a.bundle.data;
+  if (!bun) coverage.push("bundles not read");
+  if (bun && bun.heldPct >= RULES.BUNDLE_HELD_WARN) add("bundle", `Bundled wallets still hold ${pctTxt(bun.heldPct)} of supply`, "warn", "front", P.bundleHeld);
 
-  const rank: Record<ReasonLevel, number> = { bad: 0, warn: 1, good: 2 };
-  out.sort((x, y) => rank[x.level] - rank[y.level] || y.p - x.p);
-  // the caps explain the letter, so they sit right after the bad facts
-  const caps: R[] = [];
-  if (fewHolders) caps.push({ id: "holders", text: `Only ${plural(m.holders!, "holder")}`, level: "warn", p: 0 });
-  if (snipersUnknown) caps.push({ id: "snipers", text: old && age !== null ? `Snipers not checked (older than ${plural(windowOf(inp) ?? 0, "day")})` : "Snipers not checked", level: "warn", p: 0 });
-  if (trackUnknown) caps.push({ id: "devTrack", text: "Dev history not checked", level: "warn", p: 0 });
-  // (one reason per id: a partial history / an unchecked volume that already has a bad fact shows that fact)
-  if (trackPartial && !out.some((x) => x.id === "devTrack")) caps.push({ id: "devTrack", text: "Dev history partly checked", level: "warn", p: 0 });
-  if (dustUnknown && !out.some((x) => x.id === "volume")) caps.push({ id: "volume", text: "Wash trades partly checked", level: "warn", p: 0 });
-  const firstSoft = out.findIndex((x) => x.level !== "bad");
-  out.splice(firstSoft < 0 ? out.length : firstSoft, 0, ...caps);
-  const reasons = out.slice(0, RULES.MAX_REASONS).map(({ p: _p, ...r }) => (void _p, r));
+  // ---- dev history: information only (the Dev section shows it), but part of a full check ----
+  if (inp.track === null) coverage.push("dev history not checked");
+  else if (inp.track.partial) coverage.push("dev history partly checked");
 
-  // ---- no letter: too young (an unknown age is not shown to be past the gate), too few trades / first buyers,
-  // or the holders were not read (a letter without them would grade dev bag, dev selling and concentration as
-  // "fine" when they are unknown) ----
+  // ---- price: late entry (an unknown profit share is not "nobody in profit") ----
+  if (m.launchX === null) coverage.push("launch price not read");
+  else if (m.launchX >= RULES.LATE_X && (m.profitPct === null || m.profitPct > 0)) {
+    add("late", `Late entry: price ${m.launchX >= 10 ? Math.round(m.launchX) : m.launchX.toFixed(1)}× launch${m.profitPct !== null ? `, ${pctTxt(m.profitPct)} of holders in profit` : ""}`, "warn", "price", P.late);
+  }
+
+  // ---- activity: real holders and trades (the strongest separator of outcomes in the audit) ----
+  const tr24 = m.trades24h;
+  if (realH.n === null || tr24 === null) gateUnknown = true;
+  if (tr24 === null && tradesAll !== null) coverage.push("24h trades not read");
+  if (a.market.data && (m.lastTradeAt === null || m.lastTradeAt === undefined)) coverage.push("last trade time not read");
+  const lowAct = (realH.n !== null && realH.n < RULES.GATE_HOLDERS) || (tr24 !== null && tr24 < RULES.GATE_TRADES24);
+  const actTxt = `${realH.n === null ? "—" : plural(realH.n, "real holder")}${gifted > 0 ? ` (+${gifted.toLocaleString("en-US")} airdropped)` : ""} · ${tr24 === null ? "—" : plural(tr24, "trade")} 24h`;
+  if (a.graduated) {
+    const last = m.lastTradeAt ?? null;
+    const quiet = tr24 === 0 || (last !== null && nowSec - last > 86_400);
+    // POOL_MIN_ETH is ETH: a token-paired pool (VIBEVIBE, a stock, USDG) can't be sized against it, so its size is
+    // an unread gate input (never "not empty": 136 USDG passed the 1-unit bar)
+    const poolKnown = native && m.poolEth !== null && m.poolEth !== undefined;
+    const emptyPool = poolKnown && m.poolEth! < RULES.POOL_MIN_ETH;
+    const fewH = realH.n !== null && realH.n < RULES.POOL_MIN_HOLDERS;
+    if (m.poolEth === null || m.poolEth === undefined) coverage.push("pool not read");
+    else if (!native) coverage.push(`pool size in ${unit}, not ETH`);
+    // a dead pool can't be ruled out: no gate is shown to be passed (A/B need every gate input read)
+    if (!poolKnown) gateUnknown = true;
+    if (last === null && tr24 === null) gateUnknown = true;
+    if (emptyPool || quiet || fewH) {
+      gate = true;
+      const why = emptyPool ? `pool holds ${numTxt(m.poolEth!)} ${unit}` : quiet ? "no trade in 24h" : `only ${plural(realH.n!, "real holder")}`;
+      add("pool", `Graduated, ${why}`, "warn", "activity", P.deadPool, 70);
+    }
+  }
+  if (lowAct) { gate = true; add("activity", `Only ${actTxt}`, "warn", "activity", P.thinActivity, 50); }
+  else if (realH.n !== null && tr24 !== null) add("activity", actTxt, "info", null, 0);
+
+  // ---- score: by family, the biggest penalty + a quarter of the rest, capped ----
+  const reds = out.filter((r) => r.level === "bad").length;
+  const critical = out.some((r) => r.critical);
+  const warns = out.filter((r) => r.level === "warn").length;
+  const fams = new Map<Family, number[]>();
+  for (const r of out) if (r.f && r.p > 0) fams.set(r.f, [...(fams.get(r.f) ?? []), r.p]);
+  let lost = 0;
+  for (const ps of fams.values()) {
+    const max = Math.max(...ps);
+    const rest = ps.reduce((t, x) => t + x, 0) - max;
+    lost += Math.min(RULES.FAMILY_CAP, max + RULES.FAMILY_REST * rest);
+  }
+  const score = Math.max(0, Math.min(100, Math.round(100 - lost)));
+
+  const rank: Record<ReasonLevel, number> = { bad: 0, warn: 1, info: 2, good: 3 };
+  out.sort((x, y) => rank[x.level] - rank[y.level] || y.s - x.s);
+  const reasons: ScreenerReason[] = out.slice(0, RULES.MAX_REASONS).map(({ id, text, level }) => ({ id, text, level }));
+
+  // ---- no letter: unread, too young or too thin; a red fact grades anyway (facts need no sample) ----
   const young = age === null || age < RULES.MIN_AGE_MIN;
-  const thin = tradesAll === null || tradesAll < RULES.MIN_TRADES;
-  const noFront = !a.health || a.health.firstBuyers < RULES.MIN_FRONT;
-  if (young || thin || noFront || !sup) return { grade: null, score: null, verdict: "unknown", reasons, metrics };
+  const unread = tradesAll === null || !a.health || !sup || realH.n === null;
+  const thin = !unread && (realH.n! < RULES.THIN_HOLDERS || tradesAll! < RULES.THIN_TRADES || a.health!.firstBuyers < RULES.MIN_FRONT);
+  const noGrade: NoGrade | null = unread ? "unread" : young ? "young" : thin ? "thin" : null;
+  if (noGrade && reds === 0) return { grade: null, score: null, verdict: "unknown", reasons, metrics: { ...metrics, coverage, noGrade } };
 
-  const score = Math.max(0, Math.min(100, 100 - out.reduce((s, r) => s + r.p, 0)));
-  const bad = out.filter((r) => r.level === "bad").length;
-  let grade = capGrade(gradeFor(score), bad);
-  // snipers / farms unknown (old line, or no usable wallet index), the dev's record unknown or partial, or dust
-  // not taken out of the volume: never a top letter on a partial check
-  if ((snipersUnknown || trackUnknown || trackPartial || dustUnknown) && grade === "A") grade = "B";
-  // a clean letter next to "9 of first 20 are snipers" reads as a lie: many snipers up front = caution at best.
-  // The share counts too: 3 snipers of 5 first buyers is a sniped launch, not a clean one
-  const sniped = m.snipers20 !== null && (m.snipers20 >= RULES.SNIPERS_WARN || (n >= RULES.MIN_FRONT && m.snipers20 / n >= RULES.SNIPERS_SHARE_WARN));
-  if ((sniped || fewHolders) && (grade === "A" || grade === "B")) grade = "C";
-  // the dev dumped the bag: high risk at best
-  if (m.devSoldPct !== null && m.devSoldPct >= RULES.DEV_DUMPED && grade !== "F") grade = "D";
+  // ---- the letter ----
+  const worse = (g: Grade, cap: Grade): Grade => (g > cap ? g : cap);
+  let grade: Grade = gradeFor(score);
+  // F means a critical fact or two red ones, never points alone: a low score without them is D
+  if (critical || reds >= 2) grade = "F";
+  else if (grade === "F") grade = "D";
+  if (reds === 1) grade = worse(grade, "D");
+  if (gate || gateUnknown || noGrade) grade = worse(grade, "C");
+  if (grade === "A" && (warns > 0 || coverage.length > 0)) grade = "B";
   const verdict: Verdict = grade === "A" || grade === "B" ? "clean" : grade === "C" ? "caution" : "risk";
-  return { grade, score, verdict, reasons, metrics };
+  return { grade, score, verdict, reasons, metrics: { ...metrics, coverage, noGrade: null } };
 }
 
-/** a "clean" row worth listing on the Cleanest board: real holders and real trading, not an empty token */
-export function cleanEligible(m: ScreenerMetrics): boolean {
-  // every "Looks clean" token with real activity; the board sorts fully checked lines (snipers known) first
-  return (m.holders ?? 0) >= RULES.CLEAN_MIN_HOLDERS && (m.trades24h ?? 0) >= RULES.CLEAN_MIN_TRADES24 && (m.realVolPct ?? 0) > 0;
+/** A row worth listing on the Rankings Clean board (the caller keeps A/B only): a Full check, a trade in the last
+ *  CLEAN_RECENT_H hours and the activity gates passed. Unknown (an older row) is never eligible. */
+export function cleanEligible(m: ScreenerMetrics, nowMs: number = Date.now()): boolean {
+  if (!m.coverage || m.coverage.length > 0) return false;
+  if (m.lastTradeAt === null || m.lastTradeAt === undefined || nowMs / 1000 - m.lastTradeAt > RULES.CLEAN_RECENT_H * 3600) return false;
+  return (m.holders ?? 0) >= RULES.GATE_HOLDERS && (m.trades24h ?? 0) >= RULES.GATE_TRADES24;
 }

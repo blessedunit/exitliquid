@@ -1,4 +1,4 @@
-// A pixel hourglass: no grade yet ("Too early to grade"). Reads as "wait", not as a missing image.
+// A pixel hourglass: no letter yet ("Too new", "Not enough trading yet", "Couldn't read"). Reads as "wait", not as a missing image.
 // Drawn on a 9x11 pixel grid as rects so it stays crisp at any size.
 const FRAME = [
   "#########",

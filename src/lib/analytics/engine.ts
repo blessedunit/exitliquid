@@ -14,7 +14,9 @@ import { explorerBudgetShare, topHolders } from "@/lib/holders";
 import { BoundedTtlMap } from "@/lib/bounded";
 import { earlyIndex, perIndex } from "@/lib/earlyIndex";
 import { marketOf, poolSwapEth, quoteBuy, quoteSell, type MarketState } from "./market";
-import { BLOCK_SEC, book, bundle, devSoldPct, exitMath, IMPACT_SIZES, marketLegs, sortRaw, supplyOf, volume, walletTags, type HolderExtra, type Leg, type Quotes } from "./compute";
+import { BLOCK_SEC, book, bundle, devFlows, devSoldPct, exitMath, IMPACT_SIZES, lastTradeAt, marketLegs, MICRO_ETH, pusherOf, sortRaw, supplyOf, volume, walletTags, WASH_WINDOW_SEC, type HolderExtra, type Leg, type Quotes } from "./compute";
+import { blocksIn, measuredSecPerBlock, noteSecPerBlock } from "./blocktime";
+import { curvePrice } from "@/lib/queue";
 import { healthOf } from "./healthMemo";
 import { clonesOf } from "./clones";
 import { chipsFor } from "./chips";
@@ -103,6 +105,7 @@ export async function secPerBlock(head: number): Promise<number | null> {
         const v = (Number(a.timestamp) - Number(b.timestamp)) / span;
         if (!(v > 0.05 && v < 2)) return null;
         spb = { v, at: Date.now() };
+        noteSecPerBlock(v);
         return v;
       } catch {
         return spb?.v ?? null;
@@ -305,7 +308,8 @@ async function build(token: string): Promise<Analytics> {
   const volSrc: Src = ["chain", meta.graduated ? "Transfer logs + PoolManager Swap events" : "Transfer logs, exact curve replay"];
   if (!legs.length) volF = field<Volume>(null, volSrc, "No trades yet.", now);
   else {
-    const v = volume(legs, nowSec, lb, since);
+    // the wash window in blocks for legs without a timestamp: the log's own measured block time
+    const v = volume(legs, nowSec, lb, since, MICRO_ETH, { washBlocks: blocksIn(WASH_WINDOW_SEC, measuredSecPerBlock(raw)), creator });
     v.labelsAsOf = lb ? earlyIndex().generatedAt : null;
     if (tsMissing) {
       // block times unknown: the time windows can't be cut honestly, only the whole history stays
@@ -328,6 +332,12 @@ async function build(token: string): Promise<Analytics> {
   const extra: HolderExtra = { cluster, fundedBlock, checked, nonce, labels: lb, secPerBlock: spbV, dev };
   const sup = supplyOf(bk, curve, plumbing, creator, extra);
   sup.devSoldPct = dev ? devSoldPct(legs, bk, creator, 0) : null;
+  const df = dev ? devFlows(legs, creator, supplyTotal) : null;
+  sup.devSoldSupplyPct = df ? df.soldSupplyPct : null;
+  sup.devEthIn = df ? df.ethIn : null;
+  sup.devEthOut = df ? df.ethOut : null;
+  // a history without its start can't say who bought how much
+  sup.pusher = startKnown ? pusherOf(legs, supplyTotal, creator) : null;
   const supReasons = [
     holders ? null : holdersS.ok ? null : holdersS.timedOut ? "Funding (fresh / cluster) still loading, next refresh." : "Funding (fresh / cluster): explorer didn't answer.",
     nonce.size < people.length ? "Some nonces unknown." : null,
@@ -349,7 +359,16 @@ async function build(token: string): Promise<Analytics> {
   const supplyKnown = bk.minted > 0 ? bk.minted : null;
   const marketF: Field<Market> = market
     ? field<Market>(
-      (({ reserves: _r, curve: _c, poolKey: _k, buyQuotes: _q, ...m }) => (void _r, void _c, void _k, void _q, { ...m, supply: supplyKnown, mcapEth: supplyKnown === null ? null : m.spotEth * supplyKnown }))(market),
+      (({ reserves: _r, curve: _c, poolKey: _k, buyQuotes: _q, launchSpot, ...m }) => (void _r, void _c, void _k, void _q, {
+        ...m,
+        supply: supplyKnown,
+        mcapEth: supplyKnown === null ? null : m.spotEth * supplyKnown,
+        // v1 pools: the graduation position's range isn't checked, so the pool's ETH stays unknown
+        poolEth: null,
+        lastTradeAt: lastTradeAt(legs),
+        // the curve's own start (live curve), else the v1 curve model every v1 factory shares (lib/queue)
+        launchMcapEth: supplyKnown === null ? null : (launchSpot ?? curvePrice(0)) * supplyKnown,
+      }))(market),
       ["chain", market.venue === "curve" ? "curve reserves eth_call" : "V4 PoolManager extsload + V4 Quoter"], null, now)
     : field<Market>(null, ["chain", "curve / V4 pool eth_call"], marketReason, now);
 

@@ -6,7 +6,7 @@
 import { cookies } from "next/headers";
 import Launches from "./Launches";
 import HomeIntro, { type IntroMarket, type IntroMode } from "@/components/home/HomeIntro";
-import { launchPage, type LaunchPage } from "@/lib/launches";
+import { launchPage, presetPage, type LaunchPage } from "@/lib/launches";
 import { peekState } from "@/lib/state";
 import { parseBoard } from "./state";
 
@@ -41,7 +41,7 @@ export async function DeparturesPage({ searchParams, intro = false }: { searchPa
       // but never hold the whole page for a slow list (Near graduation takes vibe 6-9 s): after 3 s the board
       // arrives with its skeleton and loads the list itself (the server call keeps filling the cache)
       first = await Promise.race([
-        launchPage(board.tab, board.q.replace(/^\$/, ""), null, 24).catch(() => null),
+        (board.q || board.tab === "new" ? launchPage("new", board.q.replace(/^\$/, ""), null, 24) : presetPage(board.tab, null, 24)).catch(() => null),
         new Promise<null>((res) => setTimeout(() => res(null), 3_000)),
       ]);
     } catch {

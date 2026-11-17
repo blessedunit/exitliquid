@@ -56,6 +56,15 @@ export type Market = {
   /** total supply (whole tokens, minted per the Transfer log) and spot x supply in ETH; null = unknown */
   supply: number | null;
   mcapEth: number | null;
+  /** pool only: the pair (ETH) side of the V4 pool's liquidity, from slot0 + liquidity. Exact for vibe's v6
+   *  graduation position (full range, ticks -887220..887220, checked 17.11 on HUB / VV); another LP's narrow range
+   *  would make it an over-estimate. null on the curve, on v1 pools (range not checked) and when unread. */
+  poolEth?: number | null;
+  /** unix seconds of the newest market trade (curve or pool), from the log's block-anchored timestamps; null = no trade / unknown */
+  lastTradeAt?: number | null;
+  /** market cap at the curve's start price (sold = 0) x total supply, in the same unit as mcapEth. mcapEth /
+   *  launchMcapEth = how far the price already ran above launch. null = curve shape unread / supply unknown */
+  launchMcapEth?: number | null;
 };
 
 /* ---------------- 1. bundle ---------------- */
@@ -152,7 +161,9 @@ export type VolWindow = {
   volumeEth: number;
   /** volume minus wash minus known-bot trades that aren't wash (each ETH counted once) */
   realEth: number;
-  /** wash = dust trades (under Volume.dust) + in-and-out by one wallet within 2 blocks */
+  /** wash = dust trades (under Volume.dust) + round trips: the part of a wallet's buy undone by its own opposite
+   *  sell (or the reverse) within Volume.washWindowSec, curve and pool alike (curve buy -> pool sell right after
+   *  graduation counts). Matched by tokens, so a lone buy is never wash and a small sell washes only its own size. */
   washEth: number;
   microTrades: number;
   roundTrips: number;
@@ -164,6 +175,18 @@ export type VolWindow = {
   botEth: number | null;
   /** ETH of trades whose size is unknown (pool trades without a swap log): left out, never zero */
   unknownTrades: number;
+  /** who makes this window's volume; null = fewer than 5 sized trades, no volume, or >10% of trades unsized */
+  concentration?: VolConcentration | null;
+};
+export type VolConcentration = {
+  /** % of the window's sized volume (buys + sells, each ETH once) made by the top wallet / the top 3 wallets */
+  top1Pct: number;
+  top3Pct: number;
+  topWallet: string;
+  /** the top wallet is the creator; null = creator unknown */
+  topIsDev: boolean | null;
+  /** distinct wallets with a sized trade in the window */
+  wallets: number;
 };
 export type TopTrader = { wallet: string; eth: number; sharePct: number; trades: number; tag: "sniper" | "farm" | null };
 export type Volume = {
@@ -177,6 +200,12 @@ export type Volume = {
   /** the dust threshold used, in the pair's unit (0.0001 on an ETH pair); null = the pair's scale was unknown,
    *  so dust was NOT taken out of the volume (wash is a lower bound) */
   dust: number | null;
+  /** the round-trip (wash) window in seconds */
+  washWindowSec?: number;
+  /** the same window in blocks at the measured block time, used for legs without a timestamp; null = every leg had one */
+  washWindowBlocks?: number | null;
+  /** some buy/sell pairs could not be timed (no timestamps, block time unmeasured): wash is a lower bound */
+  washWindowUnknown?: boolean;
 };
 
 /* ---------------- 4. supply ---------------- */
@@ -222,6 +251,42 @@ export type Supply = {
   /** % of the dev's own bag sold into the curve / pool: sold / (sold + still held + moved out); v6 gift reserve
    *  excluded. null = creator or start of history unknown, or the dev never held the token */
   devSoldPct?: number | null;
+  /** holders that bought on the market (curve or pool; not gift-list / transfer-only bags) AND hold at least
+   *  realHolderMinPct of total supply. `holders` stays the raw count of every non-zero people balance. */
+  realHolders?: number;
+  /** the dust floor of realHolders, % of total supply (0.01 = 100k of 1B tokens) */
+  realHolderMinPct?: number;
+  /** the dev's sells (curve + pool) as % of TOTAL supply, whole history; null = creator / start of history unknown */
+  devSoldSupplyPct?: number | null;
+  /** ETH (pair units) the dev put in with its buys (fee included) / took out with its sells (after the fee), whole
+   *  history; null = creator unknown or a dev trade's size unknown */
+  devEthIn?: number | null;
+  devEthOut?: number | null;
+  /** the wallet that bought the most supply and sold it back (see Pusher); null = no buys, or start of history unknown */
+  pusher?: Pusher | null;
+};
+
+/** "one wallet bought a big share of supply and sold most of it": the worst wallet by pushedPct (peak share of supply
+ *  bought x share of its buys sold), whole history, curve and pool legs (v6 zap hops collapsed). When no wallet pushed
+ *  out 0.01%+ of supply that way: the biggest buyer, so soldPctOfBought shows it held. */
+export type Pusher = {
+  wallet: string;
+  /** null = creator unknown */
+  isDev: boolean | null;
+  /** the biggest share of total supply it held from buys at once (net position: buys minus sells, transfers ignored), % */
+  boughtPct: number;
+  /** every buy added up, % of total supply (a wallet that round-trips the same bag counts it each time; can pass 100) */
+  totalBoughtPct: number;
+  /** tokens sold / tokens bought (all buys), % capped at 100 */
+  soldPctOfBought: number;
+  /** boughtPct x soldPctOfBought / 100: the share of supply it pushed in and dumped, the ranking key */
+  pushedPct: number;
+  /** ETH (pair units) in with its buys / out with its sells; null = a trade size unknown. ethOut 0 = never sold */
+  ethIn: number | null;
+  ethOut: number | null;
+  /** unix seconds of its first buy / last sell; null = unknown / never sold */
+  firstBuyAt: number | null;
+  lastSellAt: number | null;
 };
 
 /* ---------------- 5. clones ---------------- */

@@ -4,8 +4,8 @@
 import Link from "next/link";
 import TokenAvatar from "@/components/TokenAvatar";
 import { fmtCompact } from "@/lib/format";
-import { VERDICT_LABEL, type ScreenerRow } from "@/lib/screener-types";
-import { GradeBadge, levelTone, toneClass, VerdictWord, type Tone } from "./Grade";
+import { standingWord, type ScreenerRow } from "@/lib/screener-types";
+import { CoverageMark, GradeBadge, levelTone, toneClass, VerdictWord, type Tone } from "./Grade";
 import { shimmer } from "@/components/ui/Loader";
 import s from "./screener.module.css";
 
@@ -41,24 +41,36 @@ function Money({ r, k }: { r: ScreenerRow; k: "mcap" | "vol" }) {
   );
 }
 
+/** real holders (airdrop-only and dust wallets left out); the raw count in the tooltip */
+function HoldersNum({ m }: { m: ScreenerRow["metrics"] }) {
+  if (m.holders === null || m.holders === undefined) return <>—</>;
+  const all = m.holdersAll;
+  const title = all !== null && all !== undefined && all > m.holders
+    ? `${m.holders.toLocaleString("en-US")} real holders; ${all.toLocaleString("en-US")} incl. ${(all - m.holders).toLocaleString("en-US")} airdropped or dust`
+    : "Real holders: bought in and hold more than dust";
+  return <span title={title}>{m.holders.toLocaleString("en-US")}</span>;
+}
+
 const age = (m: number | null) => (m === null ? null : m < 60 ? `${Math.max(1, Math.round(m))}m` : m < 1440 ? `${Math.floor(m / 60)}h` : `${Math.floor(m / 1440)}d`);
 
 export function Row({ r, rank, metric }: { r: ScreenerRow; rank: number; metric: Metric }) {
   const why = r.reasons.slice(0, 3);
   const a = age(r.ageMin);
   const ticker = `$${(r.ticker || "???").replace(/^\$/, "")}`;
+  const word = standingWord(r.grade, r.metrics.noGrade);
   return (
-    <Link href={`/line/${r.token}`} prefetch={false} className={`${s.row} ${s.wide}`} role="row" aria-label={`${ticker}: ${r.grade ? `grade ${r.grade}` : VERDICT_LABEL.unknown}. ${why.map((x) => x.text).join(". ")}`}>
+    <Link href={`/line/${r.token}`} prefetch={false} className={`${s.row} ${s.wide}`} role="row" aria-label={`${ticker}: ${r.grade ? `grade ${r.grade}, ${word}` : word}. ${why.map((x) => x.text).join(". ")}`}>
       <span className={s.cRank} role="cell">{rank}</span>
       <span className={s.cGrade} role="cell">
-        <GradeBadge grade={r.grade} />
+        <GradeBadge grade={r.grade} noGrade={r.metrics.noGrade} />
       </span>
       <span className={s.cTok} role="cell">
         <TokenAvatar src={r.image} symbol={r.ticker} size={28} />
         <span className={s.names}>
           <span className={s.tickLine}>
             <b className={s.tick}>{ticker}</b>
-            <VerdictWord verdict={r.verdict} />
+            <VerdictWord grade={r.grade} noGrade={r.metrics.noGrade} />
+            {r.grade && <CoverageMark coverage={r.metrics.coverage} />}
           </span>
           <span className={s.name}>
             {r.name}
@@ -85,7 +97,7 @@ export function Row({ r, rank, metric }: { r: ScreenerRow; rank: number; metric:
         {metric.sub && <small>{metric.sub}</small>}
       </span>
       <span className={`${s.cNum} ${s.cHold}`} role="cell">
-        {r.metrics.holders === null ? "—" : r.metrics.holders.toLocaleString("en-US")}
+        <HoldersNum m={r.metrics} />
       </span>
       <span className={`${s.cNum} ${s.cMc}`} role="cell">
         <Money r={r} k="mcap" />

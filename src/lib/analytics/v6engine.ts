@@ -6,15 +6,15 @@
 // v6 differences the replay handles (measured 16.10 on PAK07ADS, LEADER):
 // - tax transfers: curve / pool -> token contract (holder rewards, then token -> 0xdead burn), token -> wallet
 //   (reward payouts). The token contract is plumbing: rewards are free tokens, never a buy or a gift.
-// - pool trades go through vibe's zap: PoolManager -> zap -> buyer, seller -> zap -> PoolManager. The zap hop
-//   is collapsed so a pool buy reads as PoolManager -> buyer (the same shape the v1 compute expects).
+// - pool trades go through vibe's zaps (one per v6 factory): PoolManager -> zap -> buyer, seller -> zap -> PoolManager.
+//   Every zap hop is collapsed so a pool buy reads as PoolManager -> buyer (the same shape the v1 compute expects).
 // - the gift list: the creator delivers equal slices to thousands of wallets (3,879 on LEADER). That is vibe's
 //   airdrop, not the dev moving tokens: those transfers come from a synthetic "gift list" address instead.
 //
 // Unknown is never zero: a section that can't be computed is { data: null, reason }.
 import "server-only";
 import { client, loadEvents, tokenAbi, v6LaunchCreation, type LaunchMeta, type RawTransfer } from "@/lib/chain";
-import { PLUMBING, POOL_MANAGER, V6_PLUMBING, V6_ZAP } from "@/lib/factories";
+import { PLUMBING, POOL_MANAGER, V6_PLUMBING, V6_ZAPS, V6_ZAP_SET } from "@/lib/factories";
 import { explorerBudgetShare, topHolders } from "@/lib/holders";
 import { BoundedTtlMap } from "@/lib/bounded";
 import { earlyIndex } from "@/lib/earlyIndex";
@@ -23,7 +23,8 @@ import { pairSymbol } from "@/lib/pairs";
 import type { QueueEntry } from "@/lib/queue";
 import type { HealthResult } from "@/lib/health";
 import type { Address } from "viem";
-import { book, bundle, devSoldPct, dustFor, exitMath, sortRaw, supplyOf, volume, walletTags, ZERO, DEAD, type HolderExtra, type Leg, type Quotes } from "./compute";
+import { book, bundle, devFlows, devSoldPct, dustFor, exitMath, lastTradeAt, pusherOf, sortRaw, supplyOf, volume, walletTags, WASH_WINDOW_SEC, ZERO, DEAD, type HolderExtra, type Leg, type Quotes } from "./compute";
+import { blocksIn, measuredSecPerBlock } from "./blocktime";
 import { field, labels, nonceOf, secPerBlock, settle, within, windowStarts, NotVibeError, type Src } from "./engine";
 import { healthOf } from "./healthMemo";
 import { clonesOf } from "./clones";
@@ -38,6 +39,8 @@ const STALE_MAX = 5 * 60_000;
 const STALE_SERVE_MAX = 90_000;
 /** synthetic sender of gift-list deliveries (plumbing: not a person, not the dev) */
 const GIFTS = "0x00000000000000000000000000000000006f1f75";
+/** book(): GIFTS deliveries are gifts to people (giftedHolders, the "gifted" tag), not plumbing moves */
+const GIFT_SENDERS: ReadonlySet<string> = new Set([GIFTS]);
 
 const answers = new BoundedTtlMap<Analytics>(200);
 const lastGood = new BoundedTtlMap<Analytics>(200);
@@ -123,12 +126,14 @@ function prepare(rawIn: RawTransfer[], token: string, curve: string, creator: st
     i = j;
     if (gradBlock === null && group.some((r) => r.to === POOL_MANAGER || r.from === POOL_MANAGER)) gradBlock = group[0].block;
 
-    // ---- the zap hop: market -> zap -> wallet becomes market -> wallet; wallet -> zap -> market the same ----
-    if (group.some((r) => r.from === V6_ZAP || r.to === V6_ZAP)) {
-      const inFromMarket = group.filter((r) => r.to === V6_ZAP && market.has(r.from));
-      const outToMarket = group.filter((r) => r.from === V6_ZAP && market.has(r.to));
-      const toWallet = group.filter((r) => r.from === V6_ZAP && !market.has(r.to));
-      const fromWallet = group.filter((r) => r.to === V6_ZAP && !market.has(r.from));
+    // ---- the zap hops: market -> zap -> wallet becomes market -> wallet; wallet -> zap -> market the same.
+    // One zap per v6 factory (factories.json "zap"): the Nov factory's pool buys go PM -> 0xe1f8… -> wallet ----
+    for (const zap of V6_ZAPS) {
+      if (!group.some((r) => r.from === zap || r.to === zap)) continue;
+      const inFromMarket = group.filter((r) => r.to === zap && market.has(r.from));
+      const outToMarket = group.filter((r) => r.from === zap && market.has(r.to));
+      const toWallet = group.filter((r) => r.from === zap && !market.has(r.to));
+      const fromWallet = group.filter((r) => r.to === zap && !market.has(r.from));
       const drop = new Set<RawTransfer>();
       if (inFromMarket.length && toWallet.length) {
         for (const r of toWallet) r.from = inFromMarket[0].from;
@@ -142,7 +147,7 @@ function prepare(rawIn: RawTransfer[], token: string, curve: string, creator: st
     }
 
     // ---- gift-list deliveries: creator -> many wallets in a tx the token marks with its gift-batch event ----
-    const fromDev = creator ? group.filter((r) => r.from === creator && r.to !== curve && r.to !== POOL_MANAGER && r.to !== V6_ZAP && r.to !== token && r.to !== DEAD) : [];
+    const fromDev = creator ? group.filter((r) => r.from === creator && r.to !== curve && r.to !== POOL_MANAGER && !V6_ZAP_SET.has(r.to) && r.to !== token && r.to !== DEAD) : [];
     let gifts: RawTransfer[] = [];
     if (fromDev.length) {
       if (giftTxs) gifts = tx && giftTxs.has(tx.toLowerCase()) ? fromDev : [];
@@ -349,7 +354,7 @@ async function build(token: string): Promise<Analytics> {
   }
 
   const legs = v6Legs(P.raw, curve, plumbing, ct, swaps);
-  const bk = book(P.raw, legs, curve, plumbing);
+  const bk = book(P.raw, legs, curve, plumbing, GIFT_SENDERS);
   const supplyTotal = bk.minted > 0 ? bk.minted : 1_000_000_000;
 
   const people = [...bk.balance.entries()]
@@ -413,7 +418,8 @@ async function build(token: string): Promise<Analytics> {
   const volSrc: Src = ["chain", P.gradBlock !== null ? "Transfer logs + curve Buy/Sell events + PoolManager Swap events" : "Transfer logs + curve Buy/Sell events"];
   if (!legs.length) volF = field<Volume>(null, volSrc, "No trades yet.", now);
   else {
-    const v = volume(legs, nowSec, lb, since, dust);
+    // the wash window in blocks for legs without a timestamp: the log's own measured block time
+    const v = volume(legs, nowSec, lb, since, dust, { washBlocks: blocksIn(WASH_WINDOW_SEC, measuredSecPerBlock(P.raw)), creator });
     v.labelsAsOf = lb ? earlyIndex().generatedAt : null;
     if (tsMissing) {
       v.windows = v.windows.filter((w) => w.label === "all");
@@ -434,6 +440,11 @@ async function build(token: string): Promise<Analytics> {
   const extra: HolderExtra = { cluster, fundedBlock, checked, nonce, labels: lb, secPerBlock: spbV, dev };
   const sup = supplyOf(bk, curve, plumbing, creator, extra);
   sup.devSoldPct = dev ? devSoldPct(legs, bk, creator, (launch?.gifts ? whole(big(launch.gifts.reservedUnits) ?? 0n) : 0)) : null;
+  const df = dev ? devFlows(legs, creator, supplyTotal) : null;
+  sup.devSoldSupplyPct = df ? df.soldSupplyPct : null;
+  sup.devEthIn = df ? df.ethIn : null;
+  sup.devEthOut = df ? df.ethOut : null;
+  sup.pusher = pusherOf(legs, supplyTotal, creator);
   const supReasons = [
     holders ? null : holdersS.ok ? null : holdersS.timedOut ? "Funding (fresh / cluster) still loading, next refresh." : "Funding (fresh / cluster): explorer didn't answer.",
     nonce.size < Math.min(10, people.length) ? "Some nonces unknown." : null,
@@ -467,6 +478,10 @@ async function build(token: string): Promise<Analytics> {
       modelCheck: market.modelCheck,
       supply: supplyKnown,
       mcapEth: supplyKnown === null ? null : market.spot * supplyKnown,
+      // vibe's graduation position is full range: the pool's virtual pair reserve is its real pair liquidity
+      poolEth: market.venue === "pool" ? market.reserves.e : null,
+      lastTradeAt: lastTradeAt(legs),
+      launchMcapEth: supplyKnown === null || market.launchSpot === null ? null : market.launchSpot * supplyKnown,
     }, ["chain", market.venue === "curve" ? "curve reserveAt / sold eth_call" : "V4 PoolManager extsload"], unitNote, now)
     : field<Market>(null, ["chain", "curve / V4 pool eth_call"], mkt.why, now);
 
@@ -480,7 +495,8 @@ async function build(token: string): Promise<Analytics> {
       delivered: Number(big(g?.deliveredCount) ?? 0n),
       reservedPct: pct(whole(big(g?.reservedUnits) ?? 0n)),
       deliveredPct: pct(P.giftTokens),
-      onlyGiftHolders: [...P.giftRecipients].filter((w) => (bk.balance.get(w) ?? 0) > 0 && !(bk.boughtIn.get(w) ?? 0) && !(bk.giftIn.get(w) ?? 0)).length,
+      // nothing else came in: no buy, and no gift beyond the gift list's own delivery
+      onlyGiftHolders: [...P.giftRecipients].filter((w) => (bk.balance.get(w) ?? 0) > 0 && !(bk.boughtIn.get(w) ?? 0) && !((bk.giftIn.get(w) ?? 0) - (bk.listGiftIn.get(w) ?? 0) > 1e-9)).length,
     }
     : null;
   const personal = big(launch?.initialNetPersonalUnits);

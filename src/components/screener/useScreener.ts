@@ -68,13 +68,19 @@ async function load(url: string) {
   }
 }
 
+/** the Clean board's order: the lower risk first (letter, then score), then the busier line (trades, real holders) */
+export function byRiskThenActivity(a: ScreenerRow, b: ScreenerRow): number {
+  return (a.grade ?? "Z").localeCompare(b.grade ?? "Z") || (b.score ?? -1) - (a.score ?? -1)
+    || (b.metrics.trades24h ?? -1) - (a.metrics.trades24h ?? -1) || (b.metrics.holders ?? -1) - (a.metrics.holders ?? -1);
+}
+
 /** the board cut the server makes (lib/screener board(), same filters), for the static fallback only */
 function localBoard(rows: ScreenerRow[], board: ScreenerBoard): ScreenerRow[] {
   const m = (r: ScreenerRow) => r.metrics;
   const desc = (f: (r: ScreenerRow) => number | null) => (a: ScreenerRow, b: ScreenerRow) => (f(b) ?? -1) - (f(a) ?? -1);
   switch (board) {
     case "clean":
-      return rows.filter((r) => r.verdict === "clean" && cleanEligible(m(r))).sort(desc((r) => r.score));
+      return rows.filter((r) => r.verdict === "clean" && cleanEligible(m(r))).sort(byRiskThenActivity);
     case "risk":
       return rows.filter((r) => r.verdict === "risk" && ((m(r).trades24h ?? 0) >= 5 || (m(r).holders ?? 0) >= 10)).sort((a, b) => (a.score ?? 101) - (b.score ?? 101));
     case "sniped":

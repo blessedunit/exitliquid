@@ -7,7 +7,7 @@ import styles from "./lines.module.css";
 export const metadata: Metadata = {
   alternates: { canonical: "/lines" },
   title: "Rankings",
-  description: "The cleanest vibe/vibe tokens and the worst red flags right now: snipers, dev selling, whales, real volume.",
+  description: "vibe/vibe tokens with no red flags found on a full check, and the worst red flags right now: pumps, dev bags, whales, fake volume.",
 };
 
 export default function LinesPage() {

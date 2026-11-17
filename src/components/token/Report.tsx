@@ -13,7 +13,7 @@ import type { AnalyticsState } from "@/components/analytics/useTokenAnalytics";
 import type { HealthRead } from "@/components/HealthCard";
 import Unreadable from "./Unreadable";
 import type { Analytics } from "@/lib/analytics/types";
-import { VERDICT_LABEL, type Verdict as VerdictWord } from "@/lib/screener-types";
+import { coverageWord, standingWord, type Verdict as VerdictWord } from "@/lib/screener-types";
 import { RULES } from "@/lib/screener-rules";
 import { readVerdict } from "./verdict";
 import { trackRecord, type PassportState, type TrackRecord } from "./useDevPassport";
@@ -181,7 +181,7 @@ function VerdictImpl({ state, health, passport, token = null, createdAt = null }
   const thin = graded && !v.grade;
   // no letter yet and the read is still on its way: the loader in the square, the caption once in the word
   const loading = reading || hold || (!graded && state.trouble !== "failed" && state.trouble !== "notvibe");
-  const wordText = graded ? VERDICT_LABEL[word] : state.trouble === "notvibe" ? "Not a vibe/vibe launch" : "Reading the chain…";
+  const wordText = graded ? standingWord(v.grade, v.noGrade) : state.trouble === "notvibe" ? "Not a vibe/vibe launch" : "Reading the chain…";
 
   return (
     <section className={r.verdict} aria-label="Verdict">
@@ -191,7 +191,7 @@ function VerdictImpl({ state, health, passport, token = null, createdAt = null }
             <b aria-hidden>{g.grade}</b>
           </span>
         ) : (
-          <span className={`${r.grade} ${r.gNone}`} title={loading ? "Reading the chain" : state.trouble === "failed" ? "Unknown" : "Too early to grade"}>
+          <span className={`${r.grade} ${r.gNone}`} title={loading ? "Reading the chain" : state.trouble === "failed" ? "Unknown" : standingWord(null, v.noGrade)}>
             {loading ? <Loader size="mini" /> : <Hourglass size={34} className={r.hourglass} />}
           </span>
         )}
@@ -201,6 +201,7 @@ function VerdictImpl({ state, health, passport, token = null, createdAt = null }
             : <p className={`${r.word} ${graded ? "" : r.wordWait} ${VERDICT_TONE[word]}`} role="status">{wordText}</p>}
           <p className={r.meta}>
             {g && g.score !== null && <span className={r.num}>{g.score}/100</span>}
+            {g && <span className={r.cover} title="What the check read. A needs a full check.">{coverageWord(v.coverage)}</span>}
             {thin && ageSec !== null && ageSec < 600 && <span>launched {Math.max(1, Math.round(ageSec / 60))} min ago</span>}
             {state.stale && <span className={r.stale}>stale</span>}
           </p>
@@ -240,19 +241,28 @@ function FiguresImpl({ state, fallback, mcap, vol, holders, curve }: FiguresProp
   const realPct = day && day.volumeEth > 0 ? (day.realEth / day.volumeEth) * 100 : null;
   // red only with a sample behind it (the same minimum as the grade's volume reasons)
   const volChecked = !!day && day.trades - day.unknownTrades >= RULES.MIN_VOL_TRADES;
+  // holders = real holders (bought in, more than dust) once the chain read has them; the raw count in the tooltip
+  const real = typeof sup?.realHolders === "number" ? sup.realHolders : null;
+  const holdersTitle = real !== null && sup && sup.holders > real
+    ? `${fmtInt(real)} real holders; ${fmtInt(sup.holders)} incl. ${fmtInt(sup.holders - real)} airdropped or dust`
+    : real !== null ? "Real holders: bought in and hold more than dust" : top?.src === "vibe" ? "Top 10 holders, from vibe/vibe's holder list" : "Top 10 holders' share of total supply";
   const cells: (MarketItem & { bad?: boolean })[] = [
     mcap,
-    { ...vol, sub: realPct !== null ? `${pct(realPct)} real` : vol.sub, bad: volChecked && realPct !== null && realPct < 70, title: vol.title ?? "24 h volume; real = minus wash and known-bot trades" },
+    // red as in the grade: little real volume only matters when one wallet makes a big part of it
+    { ...vol, sub: realPct !== null ? `${pct(realPct)} real` : vol.sub, bad: volChecked && realPct !== null && realPct < RULES.REAL_BAD, title: vol.title ?? "24 h volume; real = minus wash and known-bot trades" },
     {
       ...holders,
+      ...(real !== null ? { label: "Real holders", value: fmtInt(real) } : {}),
       sub: top ? `top 10: ${pct(top.total)}` : holders.sub,
-      bad: !!top && (sup?.holders ?? 10) >= 10 && top.total >= 60,
-      title: top?.src === "vibe" ? "Top 10 holders, from vibe/vibe's holder list" : "Top 10 holders' share of total supply",
+      bad: real !== null && real < RULES.GATE_HOLDERS,
+      title: holdersTitle,
     },
     {
       label: "Dev holds", value: dev === null ? "—" : pct(dev),
-      sub: sup?.devSells == null ? (dev === null ? undefined : "of supply") : sup.devSells > 0 ? `sold ${plural(sup.devSells, "time")}` : "never sold",
-      bad: !!sup?.devSells || (dev !== null && dev >= 10),
+      sub: sup?.devSoldSupplyPct != null && sup.devSoldSupplyPct >= 0.5
+        ? `sold ${pct(sup.devSoldSupplyPct)} of supply`
+        : sup?.devSells == null ? (dev === null ? undefined : "of supply") : sup.devSells > 0 ? `sold ${plural(sup.devSells, "time")}` : "never sold",
+      bad: dev !== null && dev >= RULES.DEV_HOLDS_BAD,
       title: "The creator's bag, % of total supply",
     },
     {

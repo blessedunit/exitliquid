@@ -1,5 +1,5 @@
 "use client";
-// "Real volume": volume with wash (dust trades under 0.0001 ETH, one wallet in and out within 2 blocks) and
+// "Real volume": volume with wash (dust trades under 0.0001 ETH, one wallet in and out within the wash window, 5 minutes) and
 // known-bot trades (Early Index sniper / farm wallets) taken out. Each ETH sits in one bucket only: a bot's dust
 // trade is wash, not bots too, so Real + Bots + Wash = the whole volume and the headline matches the bar.
 // Open to everyone: the windows table and who makes the volume.
@@ -8,6 +8,12 @@ import type { VolWindow } from "@/lib/analytics/types";
 import type { AnalyticsState } from "./useTokenAnalytics";
 import { Addr, Card, Pending, pct, Source, Tag } from "./bits";
 import s from "./analytics.module.css";
+
+/** the round-trip window as words: the answer's own window (seconds), 5 minutes when an older answer lacks it */
+const washWindow = (sec: number | undefined) => {
+  const v = sec ?? 300;
+  return v % 60 === 0 ? `${v / 60} minute${v === 60 ? "" : "s"}` : `${v} seconds`;
+};
 
 const share = (part: number | null, all: number) => (part === null ? null : all > 0 ? (part / all) * 100 : 0);
 const LABEL: Record<VolWindow["label"], string> = { "1h": "1h", "24h": "24h", all: "All" };
@@ -69,7 +75,7 @@ export default function VolumeCard({ state, onSelect }: { state: AnalyticsState;
               <tbody>
                 <Row name="Volume" ws={d.windows} hide={hide} v={(w) => `${fmtEth(w.volumeEth)}`} />
                 <Row name="Real" ws={d.windows} hide={hide} v={(w) => `${fmtEth(w.realEth)}`} cls={s.up} hint="Volume without wash and without known-bot trades" />
-                <Row name="Wash" ws={d.windows} hide={hide} v={(w) => (w.washEth ? fmtEth(w.washEth) : "0")} hint={`${d.dust == null ? "In-and-out" : `Dust trades under ${d.dust} ${U} plus in-and-out`} by one wallet within 2 blocks`} />
+                <Row name="Wash" ws={d.windows} hide={hide} v={(w) => (w.washEth ? fmtEth(w.washEth) : "0")} hint={`${d.dust == null ? "In-and-out" : `Dust trades under ${d.dust} ${U} plus in-and-out`} by one wallet within ${washWindow(d.washWindowSec)}`} />
                 <Row name="Buys / sells" ws={d.windows} hide={hide} v={(w) => `${fmtInt(w.buys)} / ${fmtInt(w.sells)}`} />
                 <Row name="Buyers" ws={d.windows} hide={hide} v={(w) => fmtInt(w.buyers)} />
                 <Row name="Buys per buyer" ws={d.windows} hide={hide} v={(w) => (w.buysPerBuyer === null ? "—" : w.buysPerBuyer.toFixed(2))} hint="Many buys per wallet = a few wallets making the activity" />

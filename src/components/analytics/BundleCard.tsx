@@ -27,7 +27,7 @@ export default function BundleCard({ state, onSelect }: { state: AnalyticsState;
   const snipers = h?.snipers != null && (
     <p className={s.line2}>
       Known snipers in the first {h.firstBuyers}: <b className={h.snipers >= SNIPERS_HIGH ? s.bad : h.snipers >= SNIPERS_MEDIUM ? s.strong : undefined}>{h.snipers}</b>{" "}
-      <button type="button" className={s.chipNote} onClick={() => jumpTo("health-title")}>Line health →</button>
+      <button type="button" className={s.chipNote} onClick={() => jumpTo("health-title")}>The line →</button>
     </p>
   );
   return (

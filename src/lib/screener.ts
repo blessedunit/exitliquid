@@ -1,11 +1,14 @@
 // The screener: a graded row for every token in the active universe, kept warm by a background loop inside the
 // Next server, served from memory (never computed inside a request).
 //
-// Universe (refreshed every 5 min): the newest ~60 v6 launches + the top ~60 by 24 h volume among the last
-// ~400 v6 launches (vibe's /v6/launches has no sort, so 8 pages of 50 are read) + the v1 Hot board page + $EXIT.
-// Each token: the same /api/analytics answer the token page shows (engine.ts / v6engine.ts, shared caches, so the
-// loop also pre-warms token pages) + the creator's track record (devrep, 10 min cache), graded by
-// lib/screener-rules.ts. Concurrency 2. Young lines (< 3 h) every 5 min, the rest every 20 min.
+// Universe (refreshed every 5 min): the newest ~60 v6 launches + every active line (>= 10 trades or >= 1 ETH in
+// 24 h) of the whole v6 list (lib/launches v6Directory: head pages + a 60-page scan re-read every 20 min), ranked
+// by 24 h ETH volume and trades in turn, while the planned re-grade load fits the workers' measured time
+// (BUDGET_SHARE of CONCURRENCY x 3600 worker-s an hour, grade times measured in stats.gradeS) + the v1 Hot board
+// page + $EXIT. Each token: the same /api/analytics answer the token page shows (engine.ts / v6engine.ts, shared
+// caches, so the loop also pre-warms token pages) + the creator's track record (devrep, 10 min cache), graded by
+// lib/screener-rules.ts. Concurrency 2. Re-grades by age (CADENCE): < 1 h every 5 min, < 3 h 15 min, < 24 h 30 min,
+// older 40 min. Every grade that changed (or hourly) goes to the journal (lib/gradeLog.ts) for backtests.
 //
 // Snapshot: written (debounced, atomic temp + rename) to src/data/screener.json (env SCREENER_PATH) and copied to
 // public/screener.json; read back on the first call after a restart, so the first visitor gets rows at once.
@@ -18,7 +21,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { analyticsFor, NotVibeError } from "@/lib/analytics/engine";
 import { analyticsV6, isKnownV6, v6UnknownFactoryCount } from "@/lib/analytics/v6engine";
-import { launchCards, launchPage, type LaunchCard } from "@/lib/launches";
+import { launchCards, launchPage, v6Directory, type LaunchCard } from "@/lib/launches";
+import { gradeLogStats, logGrade } from "@/lib/gradeLog";
 import { devReputation } from "@/lib/devrep";
 import { ethUsdPrice } from "@/lib/ethPrice";
 import { EXIT_TOKEN } from "@/lib/config";
@@ -28,23 +32,35 @@ import type { ScreenerBoard, ScreenerResponse, ScreenerRow } from "@/lib/screene
 
 export const ON_CF = process.env.EXIT_CF === "1";
 
-const CONCURRENCY = 2;
+/** workers (public RPC is rate-limited: 2 = ~10% failed grades on 17.11); SCREENER_CONCURRENCY raises it, the budget follows */
+const CONCURRENCY = Math.max(1, Math.min(6, Math.floor(Number(process.env.SCREENER_CONCURRENCY)) || 2));
 const TOKEN_TIMEOUT_MS = 30_000;
 const UNIVERSE_MS = 5 * 60_000;
 /** hard cap on one universe refresh: a request that never settles must not freeze the supervisor (17.10: 9 h) */
 const UNIVERSE_TIMEOUT_MS = 120_000;
 const SHRINK_ACCEPT_MS = 3 * 3600_000;
 const RANK_MAX_AGE_MS = 3600_000;
-const YOUNG_MIN = 180;
-const YOUNG_EVERY_MS = 5 * 60_000;
-const OLD_EVERY_MS = 20 * 60_000;
+/** re-grade cadence by the line's age: young lines move fast, old-but-active ones are re-read within ~30-40 min */
+const CADENCE: { underMin: number; everyMs: number }[] = [
+  { underMin: 60, everyMs: 5 * 60_000 },
+  { underMin: 180, everyMs: 15 * 60_000 },
+  { underMin: 24 * 60, everyMs: 30 * 60_000 },
+  { underMin: Infinity, everyMs: 40 * 60_000 },
+];
 const TRACK_RETRY_MS = 3 * 60_000;
 const NEWEST = 60;
-const TOP_VOL = 60;
-const V6_PAGES = 8;
+/** "active" as the audit counted it: >= 10 trades or >= 1 ETH of volume in 24 h; ranked by activity */
+const ACTIVE_TRADES = 10;
+const ACTIVE_ETH = 1;
+/** never more than this, whatever the budget says */
+const MAX_UNIVERSE = 700;
+/** share of the workers' time the planned re-grades may take (the rest: first grades, retries, timeouts) */
+const BUDGET_SHARE = 0.75;
+/** one grade's wall time before anything is measured (17.11: 189 grades in 709 s at concurrency 2 = 7.5 s a worker) */
+const DEFAULT_GRADE_S = 7.5;
 /** rows of tokens that left the universe stay this long (grade cells and a dev's launch list still read them) */
 const KEEP_MS = 6 * 3600_000;
-const MAX_ROWS = 600;
+const MAX_ROWS = 1200;
 const PERSIST_EVERY_MS = 15_000;
 const IDLE_MS = 3_000;
 
@@ -54,7 +70,17 @@ const PUBLIC_FILE = path.join(/* turbopackIgnore: true */ process.cwd(), "public
 type Meta = { card: LaunchCard; v6: boolean };
 type Stats = { cycles: number; lastCycleMs: number | null; cycleStartedAt: number; doneThisCycle: number; errors: number; lastError: string | null; universe: number; universeAt: number;
   /** since when vibe's lists return less than half of the universe we had (0 = fine): the old universe is kept meanwhile */
-  shrunkSince?: number };
+  shrunkSince?: number;
+  /** grades done / failed since the process started (all attempts, re-grades included) */
+  graded?: number; failed?: number;
+  /** measured wall time of one grade, s (moving average): a young line, an older one, a first grade */
+  gradeS?: { young: number | null; old: number | null; first: number | null };
+  /** v6 cards the lists returned / of those active (>= 10 trades or >= 1 ETH 24 h) / active left out by the budget */
+  listed?: number; active?: number; activeLeftOut?: number;
+  /** planned re-grade load of the universe vs what the workers can do, worker-seconds an hour */
+  loadSPerH?: number; budgetSPerH?: number;
+  /** the wide v6 scan the universe came from: pages read, ms, age in min, stopped early */
+  scan?: { pages: number; ms: number; ageMin: number; partial: boolean } | null };
 
 type State = {
   impl?: { workerStep: () => Promise<boolean>; supervisorStep: () => Promise<void> };
@@ -116,29 +142,89 @@ function persist(force = false) {
 
 /* ---------------- universe ---------------- */
 
+/** re-grade interval of a line this many minutes old (null = unknown age: an old line) */
+function everyMs(ageMin: number | null): number {
+  const a = ageMin ?? Infinity;
+  return CADENCE.find((c) => a < c.underMin)!.everyMs;
+}
+
+const ewma = (prev: number | null | undefined, v: number) => (prev == null ? v : prev * 0.9 + v * 0.1);
+
+/** worker-seconds an hour that re-grading one line of this age costs (measured grade time, default before any) */
+function costSPerH(ageMin: number | null): number {
+  const g = S.stats.gradeS;
+  const young = ageMin !== null && ageMin < CADENCE[1].underMin;
+  // an older line before its first measured re-grade: never assumed cheaper than the default
+  const s = young ? (g?.young ?? DEFAULT_GRADE_S) : (g?.old ?? Math.max(g?.young ?? 0, DEFAULT_GRADE_S));
+  return (3600_000 / everyMs(ageMin)) * s;
+}
+
+const trades24 = (c: LaunchCard) => (c.buys24h ?? 0) + (c.sells24h ?? 0);
+
 async function refreshUniverse() {
-  const v6: LaunchCard[] = [];
-  let cursor: string | null = null;
-  for (let p = 0; p < V6_PAGES; p++) {
-    try {
-      const page = await launchPage("new", "", cursor, 50, 60);
-      v6.push(...page.items.filter((c) => c.v6));
-      cursor = page.next;
-      if (!cursor) break;
-    } catch {
-      break; // vibe slow: what we have is the universe until the next refresh
+  // newest pages (30 s memo) + the wide scan of the whole v6 list (~4-5 days, re-read every 20 min in the
+  // background): active lines older than the head pages (16 h) stay in the universe while they trade
+  let uniq: LaunchCard[] = [];
+  try {
+    const dir = await v6Directory(true);
+    uniq = dir.items.filter((c) => c.v6);
+    S.stats.scan = dir.scan ? { pages: dir.scan.pages, ms: dir.scan.ms, ageMin: Math.floor((Date.now() - dir.scan.at) / 60_000), partial: dir.scan.partial } : null;
+  } catch {
+    /* vibe down: v1 + $EXIT below, and the shrink guard keeps the old universe */
+  }
+  uniq.sort((a, b) => b.createdAt - a.createdAt);
+  const now = Date.now();
+  const ageOf = (c: LaunchCard) => (c.createdAt ? Math.max(0, Math.floor((now / 1000 - c.createdAt) / 60)) : null);
+  const pick = new Map<string, Meta>();
+  // budget: the workers' time an hour, times the share planned re-grades may take
+  const budget = CONCURRENCY * 3600 * BUDGET_SHARE;
+  let load = 0;
+  const add = (c: LaunchCard, v6: boolean) => {
+    if (pick.has(c.token)) return;
+    pick.set(c.token, { card: c, v6 });
+    load += costSPerH(ageOf(c));
+  };
+  for (const c of uniq.slice(0, NEWEST)) add(c, true);
+  // ranked by activity: ETH pairs by 24 h ETH volume and every line by 24 h trades, taken in turn (a token-paired
+  // line, VIBEVIBE or a stock token, has no ETH volume); then the rest of the trading lines, while the budget lasts
+  const isActive = (c: LaunchCard) => trades24(c) >= ACTIVE_TRADES || (c.volume24hEth ?? 0) >= ACTIVE_ETH;
+  const byVol = uniq.filter((c) => (c.volume24hEth ?? 0) > 0).sort((a, b) => (b.volume24hEth ?? 0) - (a.volume24hEth ?? 0));
+  const byTrades = uniq.filter((c) => trades24(c) > 0).sort((a, b) => trades24(b) - trades24(a));
+  const ranked: LaunchCard[] = [];
+  const inRank = new Set<string>();
+  for (let i = 0; i < Math.max(byVol.length, byTrades.length); i++) {
+    for (const c of [byVol[i], byTrades[i]]) {
+      if (!c || inRank.has(c.token)) continue;
+      inRank.add(c.token);
+      ranked.push(c);
     }
   }
-  const pick = new Map<string, Meta>();
-  const seen = new Set<string>();
-  const uniq = v6.filter((c) => (seen.has(c.token) ? false : (seen.add(c.token), true)));
-  for (const c of uniq.slice(0, NEWEST)) pick.set(c.token, { card: c, v6: true });
-  // 24 h volume: ETH pairs by ETH volume; token-paired lines (VIBEVIBE, stock tokens) by trade count
-  const byVol = uniq.filter((c) => (c.volume24hEth ?? 0) > 0).sort((a, b) => (b.volume24hEth ?? 0) - (a.volume24hEth ?? 0));
-  for (const c of byVol.slice(0, TOP_VOL)) pick.set(c.token, { card: c, v6: true });
-  const byTrades = uniq.filter((c) => c.volume24hEth === null && (c.buys24h ?? 0) + (c.sells24h ?? 0) > 0)
-    .sort((a, b) => (b.buys24h ?? 0) + (b.sells24h ?? 0) - ((a.buys24h ?? 0) + (a.sells24h ?? 0)));
-  for (const c of byTrades.slice(0, 10)) pick.set(c.token, { card: c, v6: true });
+  const active = ranked.filter(isActive);
+  const order = [...active, ...ranked.filter((c) => !isActive(c))];
+  let leftOut = 0;
+  // a slower chain (grades taking longer) trims the universe by at most 40% a refresh: a budget cut is never
+  // mistaken for a list outage by the shrink guard below, and the boards don't empty at once
+  const floorN = Math.ceil(S.universe.size * 0.6);
+  // newcomers (no row yet) are graded first by nextToken: hundreds at once starved the young lines' re-grades for
+  // ~20 min (17.11, 209 -> 724). Per refresh at most what the share left outside the budget can first-grade.
+  const firstS = S.stats.gradeS?.first ?? DEFAULT_GRADE_S;
+  const newMax = Math.max(20, Math.floor(((UNIVERSE_MS / 1000) * CONCURRENCY * (1 - BUDGET_SHARE)) / firstS));
+  let newcomers = 0;
+  for (const c of order) {
+    if (pick.has(c.token)) continue;
+    const isNew = !S.universe.has(c.token) && !S.rows.has(c.token);
+    if (pick.size >= MAX_UNIVERSE || (load + costSPerH(ageOf(c)) > budget && pick.size >= floorN) || (isNew && newcomers >= newMax)) {
+      if (isActive(c)) leftOut++;
+      continue;
+    }
+    if (isNew) newcomers++;
+    add(c, true);
+  }
+  S.stats.listed = uniq.length;
+  S.stats.active = active.length;
+  S.stats.activeLeftOut = leftOut;
+  S.stats.loadSPerH = Math.round(load);
+  S.stats.budgetSPerH = Math.round(budget);
   // v1: the Hot board page (the index froze 29.09, these rows are what the board still shows) + our own token
   try {
     const hot = await launchPage("hot", "", null, 24, 60);
@@ -154,7 +240,6 @@ async function refreshUniverse() {
   // vibe's v6 list failing mid-way leaves ~25 v1 rows: taking that as the universe dropped every v6 row from the
   // boards. Less than half of what we had = a list outage, not the market: keep the old universe and ask again.
   // A shrink that lasts SHRINK_ACCEPT_MS is real and is accepted.
-  const now = Date.now();
   if (S.universe.size >= 20 && pick.size < S.universe.size / 2) {
     S.stats.shrunkSince ||= now;
     if (now - S.stats.shrunkSince < SHRINK_ACCEPT_MS) {
@@ -234,10 +319,10 @@ function dueAt(r: ScreenerRow | undefined): number {
   if (!r?.checkedAt) return 0;
   // graded under other rules (served without a grade meanwhile): next in line
   if (!isCurrent(r)) return 1;
-  const young = r.ageMin !== null && r.ageMin + (Date.now() - r.checkedAt) / 60_000 < YOUNG_MIN;
+  const age = r.ageMin === null ? null : r.ageMin + (Date.now() - r.checkedAt) / 60_000;
   // the creator's record didn't load (vibe blip): retry soon, not in 20 min
   if (r.creator && r.metrics.devLaunches === null) return r.checkedAt + TRACK_RETRY_MS;
-  return r.checkedAt + (young ? YOUNG_EVERY_MS : OLD_EVERY_MS);
+  return r.checkedAt + everyMs(age);
 }
 
 function nextToken(): string | null {
@@ -275,16 +360,33 @@ async function workerStep(): Promise<boolean> {
   const t = nextToken();
   if (!t) return false;
   S.inflight.add(t);
+  const t0 = Date.now();
+  const before = S.rows.get(t);
+  const meta = S.universe.get(t) ?? null;
+  // time per grade, by kind (sizes the universe: refreshUniverse's budget)
+  const took = () => {
+    const s = (Date.now() - t0) / 1000;
+    const g = (S.stats.gradeS ??= { young: null, old: null, first: null });
+    const ageMin = meta?.card.createdAt ? (Date.now() / 1000 - meta.card.createdAt) / 60 : null;
+    if (!before?.checkedAt) g.first = Math.round(ewma(g.first, s) * 100) / 100;
+    else if (ageMin !== null && ageMin < CADENCE[1].underMin) g.young = Math.round(ewma(g.young, s) * 100) / 100;
+    else g.old = Math.round(ewma(g.old, s) * 100) / 100;
+  };
   try {
-    const row = await gradeToken(t, S.universe.get(t) ?? null);
+    const row = await gradeToken(t, meta);
     S.rows.set(t, row);
     S.asOf = Date.now();
     S.dirty = true;
     S.failedAt.delete(t);
     S.stats.doneThisCycle++;
+    S.stats.graded = (S.stats.graded ?? 0) + 1;
+    took();
+    logGrade(row); // queued, written in the background; never throws
   } catch (e) {
+    took();
     S.failedAt.set(t, Date.now());
     S.stats.errors++;
+    S.stats.failed = (S.stats.failed ?? 0) + 1;
     S.stats.lastError = `${t.slice(0, 10)}: ${String((e as Error)?.message ?? e).slice(0, 120)}`;
   } finally {
     S.inflight.delete(t);
@@ -366,7 +468,7 @@ export const snapshot = (): ScreenerResponse => snapshotAt(Date.now());
 
 export function screenerStats() {
   const staleRules = [...S.rows.values()].filter((r) => !isCurrent(r)).length;
-  return { ...S.stats, unknownFactory: v6UnknownFactoryCount(), newestGradedAgeMin: newestGradedAgeMin(), rows: S.rows.size, inflight: S.inflight.size, running: S.running, onCf: ON_CF, rulesVersion: RULES_VERSION, staleRules };
+  return { ...S.stats, concurrency: CONCURRENCY, gradeLog: gradeLogStats(), unknownFactory: v6UnknownFactoryCount(), newestGradedAgeMin: newestGradedAgeMin(), rows: S.rows.size, inflight: S.inflight.size, running: S.running, onCf: ON_CF, rulesVersion: RULES_VERSION, staleRules };
 }
 
 /** age in minutes of the youngest launch that has a row: grows when new launches stop reaching the boards */

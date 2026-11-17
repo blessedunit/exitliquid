@@ -1,11 +1,10 @@
 "use client";
-// LIVE LAUNCHES: every vibe/vibe token as one live row of the board (minimal spec §3.1): the price line (24 h, or
-// the whole life of a younger token) with its %, a thin progress bar to the door, holders, volume and B/S 1h;
-// a row lights up when someone buys. v6 rows take their last hour (volume, B/S) from the same candles.
-// One toolbar above it: the list (tabs), Sort and Refresh.
+// LIVE LAUNCHES: every vibe/vibe token as one live row of the board (minimal spec §3.1): grade, token (ticker over
+// one fixed sub-line: name · age · the grade's top flag), the price line over 24 h (or the whole life of a younger
+// token) with its %, a thin progress bar to graduation, holders and volume 24 h; a row lights up when someone buys.
+// One toolbar above it: preset tabs (each a complete view with its own order), Hide high risk and Refresh.
 import Link from "next/link";
 import EmptyState from "@/components/ui/EmptyState";
-import Term from "@/components/ui/Term";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { prime } from "@/lib/prime";
@@ -21,7 +20,7 @@ import BoardingRows from "./Boarding";
 import { fmtEth } from "@/lib/format";
 import { GradeBadge } from "@/components/screener/Grade";
 import { useScreener } from "@/components/screener/useScreener";
-import { VERDICT_LABEL, type ScreenerRow } from "@/lib/screener-types";
+import { coverageWord, standingWord, type ScreenerRow } from "@/lib/screener-types";
 
 type Page = { items: Card[]; next: string | null; v6?: "ok" | "error" | "off"; missing?: string[] };
 // "down" is terminal: MAX_TRIES failures in a row, the automatic retries stop, "Try again" starts them over
@@ -29,12 +28,16 @@ type Conn = "ok" | "retry" | "limited" | "down";
 const MAX_TRIES = 5;
 const hhmm = (ms: number) => new Date(ms).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
 
-// ids unchanged (shared ?tab= links keep working); one caption line under the tabs says what the list is
+// one row of presets, each a complete view (its own order and window); ids are the ?tab= values
 const TABS: { id: Tab; label: string; short?: string; caption: string }[] = [
-  // Trending / Near graduation / Graduated are hidden: they read vibe's v1 index, frozen since 29.09 (see ./state)
   { id: "new", label: "New", caption: "Newest launches first." },
+  { id: "hot", label: "Hot", caption: "Most ETH traded in the last 24 h." },
+  { id: "door", label: "Near graduation", short: "Near grad", caption: "Closest to graduation, not graduated yet." },
+  { id: "grad", label: "Graduated", caption: "Latest graduations first." },
   { id: "watch", label: "☆ Watchlist", short: "☆ Pins", caption: "Tokens you pinned with ☆. Saved in this browser." },
 ];
+// what a tab keeps of a search or a refresh (the server already sends only these; a search is one list for all tabs)
+const inTab = (t: Tab, c: Card) => (t === "door" ? !c.graduated : t === "grad" ? c.graduated : true);
 const POLL_MS = 30_000; // the board is CDN-cached 30 s (api/launches)
 const CHUNK = 20; // /api/launches?tokens= takes 20 addresses per call
 const WATCH_MAX = 60; // 3 calls at most (the list itself keeps 50)
@@ -52,27 +55,6 @@ const LIST_CACHE_MAX = 10; // lists kept in memory for an instant tab switch (sh
 const PENDING_MAX = 50; // New tab: tokens held behind the "↑ N new" pill
 
 
-// the list's own order, named for what it is on each tab
-const rankTitle = (t: Tab) => (t === "hot" ? "vibe/vibe trending order" : t === "watch" ? "your pin order" : "list order");
-const rankLabel = (t: Tab) => (t === "hot" ? "Trending order" : t === "watch" ? "Pin order" : t === "grad" ? "Graduation order" : "List order");
-function sortLabel(k: SortKey, period: Period, tab: Tab = "hot"): string {
-  switch (k) {
-    case "rank": return rankLabel(tab);
-    case "new": return "Newest";
-    case "door": return "Closest to grad";
-    case "eta": return "Soonest ETA";
-    case "holders": return "Holders";
-    case "vol": return `Vol ${period}`;
-    case "chg": return "Price %";
-    case "buys": return "Buys 1h";
-    case "sig": return "Grade";
-  }
-}
-// only columns the viewer can see are offered: holders hide under 1080 px, volume (and its period) on phones
-// (Grade is no column any more: a ?sort=sig link still sorts, and stays in the menu, see sortOptions)
-const SORTS_WIDE: SortKey[] = ["rank", "new", "door", "eta", "chg", "holders", "vol", "buys"];
-const SORTS_MID: SortKey[] = ["rank", "new", "door", "eta", "chg", "vol", "buys"];
-const SORTS_PHONE: SortKey[] = ["rank", "new", "door", "eta", "chg", "buys"];
 type SparkMap = ReadonlyMap<string, SparkData | null>;
 // the line for the chosen period: 24 h (or since launch), or the last hour only. undefined = loading, null = unknown
 // (an older server answer without the hour line is unknown for 1h, never the 24 h line under a 1h label)
@@ -113,24 +95,6 @@ function sortRows(ranked: { c: Card; i: number }[], key: SortKey, dir: Dir, peri
     .map((x) => x.c);
 }
 
-// viewport width class, for the sort menu only (server snapshot: wide; the client corrects after hydration)
-type Width = "wide" | "mid" | "phone";
-function widthNow(): Width {
-  if (window.matchMedia("(max-width: 760px)").matches) return "phone";
-  if (window.matchMedia("(max-width: 1080px)").matches) return "mid";
-  return "wide";
-}
-function subscribeWidth(l: () => void) {
-  const a = window.matchMedia("(max-width: 760px)");
-  const b = window.matchMedia("(max-width: 1080px)");
-  a.addEventListener("change", l);
-  b.addEventListener("change", l);
-  return () => {
-    a.removeEventListener("change", l);
-    b.removeEventListener("change", l);
-  };
-}
-
 function age(ts: number, now: number) {
   const s = Math.max(0, Math.floor(now / 1000 - ts));
   if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m`;
@@ -138,13 +102,6 @@ function age(ts: number, now: number) {
   return `${Math.floor(s / 86400)}d`;
 }
 const eth = (v: number | null) => (v === null ? "—" : v > 0 && v < 0.001 ? "<0.001" : fmtEth(v));
-function eta(h: number | null) {
-  if (h === null) return null;
-  if (h < 1) return "~<1h";
-  if (h < 48) return `~${Math.round(h)}h`;
-  if (h < 24 * 30) return `~${Math.round(h / 24)}d`;
-  return "~30d+";
-}
 const pctText = (bps: number) => `${(bps / 100).toFixed(1)}%`;
 // under 0.05 % prints as 0.0 %: never a red "−0.0%"
 const flatBps = (bps: number) => Math.abs(bps) < 5;
@@ -154,22 +111,6 @@ function chgText(bps: number) {
   const a = Math.abs(p);
   const body = a >= 1000 ? `${(a / 1000).toFixed(1)}k` : a >= 100 ? a.toFixed(0) : a.toFixed(1);
   return `${p > 0 ? "+" : p < 0 ? "−" : ""}${body}%`;
-}
-// unknown tax is a dash, never "0% tax"
-const taxText = (bps: number | null) => (bps === null ? "tax —" : `${(bps / 100).toFixed(bps % 100 ? 1 : 0)}% tax`);
-// New tab: how the first minutes went, from numbers already in the list. A 1h window covers the whole life of
-// a token under an hour old (and 24 h for v6), so there it reads "so far"; older, the window is named.
-function earlyText(c: Card, ageS: number | null): { text: string; hot: boolean } | null {
-  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-  if (c.v6) {
-    if (c.buys24h === null) return null;
-    const so = ageS !== null && ageS < 86_400 ? "so far" : "24h";
-    return { text: `${plural(c.buys24h, "buy")}${c.sells24h ? ` / ${plural(c.sells24h, "sell")}` : ""} ${so}`, hot: c.buys24h >= 10 };
-  }
-  if (c.buys1h === null) return null;
-  const so = ageS !== null && ageS < 3_600 ? "so far" : "1h";
-  const who = c.buyers1h !== null && c.buyers1h > 0 ? `${plural(c.buyers1h, "buyer")} · ` : "";
-  return { text: c.buys1h === 0 ? `no buys ${so === "so far" ? "yet" : "this hour"}` : `${who}${plural(c.buys1h, "buy")} ${so}`, hot: (c.buyers1h ?? 0) >= 10 };
 }
 const shortAddr = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 function ago(ms: number, now: number) {
@@ -268,6 +209,34 @@ function Updated({ at }: { at: number | null }) {
   );
 }
 
+// "Hide high risk" (D and F): one switch for every tab, remembered in this browser; storage can be blocked
+const RISK_KEY = "exit.hideRisk";
+const riskSubs = new Set<() => void>();
+let riskCache: boolean | null = null;
+function readRisk(): boolean {
+  if (riskCache !== null) return riskCache;
+  try {
+    riskCache = window.localStorage.getItem(RISK_KEY) === "1";
+  } catch {
+    riskCache = false;
+  }
+  return riskCache;
+}
+function setRisk(on: boolean) {
+  riskCache = on;
+  try {
+    window.localStorage.setItem(RISK_KEY, on ? "1" : "0");
+  } catch {
+    /* storage blocked: the switch still works for this visit */
+  }
+  riskSubs.forEach((f) => f());
+}
+function subscribeRisk(f: () => void) {
+  riskSubs.add(f);
+  return () => riskSubs.delete(f);
+}
+const isHighRisk = (r: ScreenerRow | undefined) => r?.grade === "D" || r?.grade === "F";
+
 export default function Launches({ initial: served, board: servedBoard, home = false }: { initial: Page | null; board: BoardState; home?: boolean }) {
   const router = useRouter();
   const pre = useCallback((href: string) => router.prefetch(href), [router]);
@@ -280,7 +249,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
     return { board: b, initial: b.tab === servedBoard.tab && b.q === servedBoard.q ? served : null };
   });
   const watch = useWatchlist();
-  const width = useSyncExternalStore(subscribeWidth, widthNow, () => "wide" as Width);
+  const hideRisk = useSyncExternalStore(subscribeRisk, readRisk, () => false);
   const [tab, setTab] = useState<Tab>(board.tab);
   const [query, setQuery] = useState(board.q.replace(/^\$/, ""));
   const [items, setItems] = useState<Card[]>(initial?.items ?? []);
@@ -294,7 +263,7 @@ export default function Launches({ initial: served, board: servedBoard, home = f
   const [lastTry, setLastTry] = useState<number | null>(null);
   const down = conn === "down";
   const [flash, setFlash] = useState<Record<string, number>>({}); // token -> new buys since the last look (-1 = new row)
-  const [period, setPeriod] = useState<Period>(board.period);
+  const period: Period = "24h"; // one window for the whole board (see ./state)
   // filter chips were removed from the board (operator, 03.10): the list always shows every row
   const [filters, setFilters] = useState<FilterId[]>([]);
   const [sort, setSort] = useState<{ key: SortKey; dir: Dir }>({ key: board.sort, dir: board.dir });
@@ -748,7 +717,6 @@ export default function Launches({ initial: served, board: servedBoard, home = f
       setTab(b.tab);
       setFilters([]);
       setSort({ key: b.sort, dir: b.dir });
-      setPeriod(b.period);
       setQuery(b.q.replace(/^\$/, ""));
     }, 0);
     return () => clearTimeout(t);
@@ -828,8 +796,11 @@ export default function Launches({ initial: served, board: servedBoard, home = f
     [base, sortD, periodD, sig],
   );
   const nowSec = now === null ? null : Math.floor(now / 1000);
-  const filtered = useMemo(() => applyFilters(sorted, filtersD, sig, nowSec, sigWindow), [sorted, filtersD, sig, nowSec, sigWindow]);
-  const rows = filtered.rows;
+  const filtered = useMemo(() => applyFilters(sorted, filtersD, sig, nowSec, sigWindow, screener.data ? graded : undefined), [sorted, filtersD, sig, nowSec, sigWindow, screener.data, graded]);
+  // the tab's own cut (a search answer or a refresh may carry rows of another view), then Hide high risk
+  const inView = useMemo(() => filtered.rows.filter((c) => inTab(tab, c)), [filtered.rows, tab]);
+  const rows = useMemo(() => (hideRisk ? inView.filter((c) => !isHighRisk(graded.get(c.token.toLowerCase()))) : inView), [inView, hideRisk, graded]);
+  const riskHidden = inView.length - rows.length;
   // keyboard (P2): j/k rows, Enter/o open, p pin, 1-5 lists, f filters, ? the list of keys.
   // Never while typing, in a select, or with a dialog open; Enter on a real control keeps its own meaning.
   useEffect(() => {
@@ -871,33 +842,6 @@ export default function Launches({ initial: served, board: servedBoard, home = f
     return () => window.removeEventListener("keydown", on);
   }, []);
 
-  // free risk flag: a ticker already used by an older token in the rows on screen
-  const dupOf = useMemo(() => {
-    const first = new Map<string, Card>();
-    for (const c of items) {
-      const k = c.symbol.trim().toLowerCase();
-      if (!k || !c.createdAt) continue;
-      const f = first.get(k);
-      if (!f || c.createdAt < f.createdAt) first.set(k, c);
-    }
-    return (c: Card) => {
-      const f = first.get(c.symbol.trim().toLowerCase());
-      return f && f.token !== c.token && c.createdAt > f.createdAt ? f : null;
-    };
-  }, [items]);
-
-  // free dev flag: how many rows on screen this creator launched (2+ = a serial launcher, visible at a glance)
-  const devCount = useMemo(() => {
-    const m = new Map<string, number>();
-    for (const c of items) if (c.creator) m.set(c.creator, (m.get(c.creator) ?? 0) + 1);
-    return m;
-  }, [items]);
-
-  const sortOptions = useMemo(() => {
-    const base = width === "phone" ? SORTS_PHONE : width === "mid" ? SORTS_MID : SORTS_WIDE;
-    return base.includes(sort.key) ? base : [...base, sort.key]; // a sort from a shared link stays visible in the menu
-  }, [width, sort.key]);
-
   const missingSet = useMemo(() => new Set(missing), [missing]);
   const foundCount = watch.filter((t) => !missingSet.has(t)).length;
   // pinned tokens that moved since they were last seen (fresh rows on screen win over the background check)
@@ -914,21 +858,13 @@ export default function Launches({ initial: served, board: servedBoard, home = f
   const stubs = tab === "watch" && state !== "loading" ? missing.filter((t) => watch.includes(t)) : [];
 
   const ariaSort = (k: SortKey): "ascending" | "descending" | "none" => (sort.key === k ? (sort.dir === "asc" ? "ascending" : "descending") : "none");
-  const th = (k: SortKey, label: string, className: string, opts: { short?: string; term?: React.ReactNode; extra?: React.ReactNode } = {}) => (
+  // a header sorts within the tab (press again to flip); the tab itself already picked the order
+  const th = (k: SortKey, label: string, className: string, title: string) => (
     <div role="columnheader" aria-sort={ariaSort(k)} className={`${styles.th} ${className} ${sort.key === k ? styles.thOn : ""}`}>
-      <button type="button" onClick={() => pickSort(k)} title={`Sort by ${k === "rank" ? rankTitle(tab) : sortLabel(k, period, tab)}`}>
-        {opts.short ? (
-          <>
-            <span className={styles.thLong}>{label}</span>
-            <span className={styles.thShort} aria-hidden>{opts.short}</span>
-          </>
-        ) : (
-          label
-        )}
+      <button type="button" onClick={() => pickSort(k)} title={title}>
+        {label}
         {sort.key === k && <i aria-hidden>{sort.dir === "desc" ? "↓" : "↑"}</i>}
       </button>
-      {opts.term}
-      {opts.extra}
     </div>
   );
 
@@ -942,8 +878,18 @@ export default function Launches({ initial: served, board: servedBoard, home = f
   const empty: { title: string; body: string; action: React.ReactNode } | null =
     down && items.length === 0 && !stubs.length
       ? { title: "Can't load launches right now.", body: lastTry === null ? "" : `Last try ${hhmm(lastTry)}.`, action: tryAgain }
-      : state === "loading" || state === "error" || stubs.length || items.length > 0
+      : state === "loading" || state === "error" || stubs.length || rows.length > 0
       ? null
+      : riskHidden > 0
+        ? {
+            title: "Every row here is high risk",
+            body: `${riskHidden} ${riskHidden === 1 ? "token is" : "tokens are"} hidden by Hide high risk.`,
+            action: (
+              <button type="button" className={styles.ghostBtn} onClick={() => setRisk(false)}>
+                Show all
+              </button>
+            ),
+          }
       : tab === "watch"
         ? watch.length === 0
           ? {
@@ -1015,13 +961,13 @@ export default function Launches({ initial: served, board: servedBoard, home = f
           new
         </span>
       );
-    const span = sp?.life ? "since launch" : period === "1h" ? "over the last hour" : "over 24 h";
+    const span = sp?.life ? "since launch" : "over 24 h";
     return (
       <>
         <Sparkline className={styles.spark} data={sp} period={period} />
         <span
           className={`${styles.chg} ${sp === undefined ? styles.chgWait : chgCls}`}
-          title={sp === undefined ? undefined : chg === null ? (sp === null ? "Price unknown right now, not zero." : `No trades in the last ${period === "1h" ? "hour" : "24 h"}.`) : `Price ${span}, first to last trade`}
+          title={sp === undefined ? undefined : chg === null ? (sp === null ? "Price unknown right now, not zero." : "No trades in the last 24 h.") : `Price ${span}, first to last trade`}
         >
           {sp === undefined ? "" : chg === null ? "—" : chgText(chg)}
         </span>
@@ -1037,25 +983,6 @@ export default function Launches({ initial: served, board: servedBoard, home = f
   const Heading = home ? "h2" : "h1"; // "/" has the hero's H1; /launches has only the board
   const sortedNote = sort.key !== DEFAULT_SORT[tab] || sort.dir !== naturalDir(DEFAULT_SORT[tab]);
   const nf = (v: number | null) => (v === null ? "—" : v.toLocaleString("en-US"));
-
-  const sortSelect = (
-    <label className={styles.sel}>
-      <span>Sort</span>
-      <select
-        value={sort.key}
-        onChange={(e) => {
-          const k = e.target.value as SortKey;
-          setSort({ key: k, dir: naturalDir(k) });
-        }}
-      >
-        {sortOptions.map((k) => (
-          <option key={k} value={k} title={k === "rank" ? rankTitle(tab) : undefined}>
-            {sortLabel(k, period, tab)}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
 
   return (
     <div className={styles.root}>
@@ -1111,7 +1038,17 @@ export default function Launches({ initial: served, board: servedBoard, home = f
         </div>
         <div className={styles.tools}>
           {status}
-          {sortSelect}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={hideRisk}
+            className={`${styles.risk} ${hideRisk ? styles.riskOn : ""}`}
+            onClick={() => setRisk(!hideRisk)}
+            title="Hide tokens graded D or F. Tokens not graded yet stay."
+          >
+            <i aria-hidden />
+            Hide high risk
+          </button>
           <button
             type="button"
             className={`${styles.refresh} ${manualBusy ? styles.refreshOn : ""}`}
@@ -1165,23 +1102,17 @@ export default function Launches({ initial: served, board: servedBoard, home = f
         {/* thin bar over the list while it refreshes with the old rows still on screen (no layout shift) */}
         <div className={`${styles.progress} ${busy || state === "more" ? styles.progressOn : ""}`} aria-hidden />
         <div ref={headRef} className={`${styles.row} ${styles.head}`} role="row" hidden={!!empty}>
-          {th("rank", "#", styles.cRank)}
           <div role="columnheader" className={`${styles.th} ${styles.cTok}`}>Token</div>
-          {th("chg", "Price", styles.cSpark)}
-          {th("door", "To grad", styles.cDoor, { term: <Term id="to-grad" icon /> })}
-          {th("holders", "Holders", styles.cIn)}
-          {th("vol", "Vol", styles.cVol, {
-            extra: (
-              <span className={styles.seg} role="group" aria-label="Period: price line and volume">
-                {(["1h", "24h"] as Period[]).map((p) => (
-                  <button key={p} type="button" aria-pressed={period === p} onClick={() => setPeriod(p)} title={`Price line and volume over the last ${p}`}>
-                    {p}
-                  </button>
-                ))}
-              </span>
-            ),
-          })}
-          {th("buys", "B/S 1h", styles.cBs, { term: <Term id="b-s" icon /> })}
+          {th("chg", "Price 24h", styles.cSpark, "Sort by price change over 24 h (or since launch for a younger token)")}
+          {tab === "grad" ? (
+            <div role="columnheader" className={`${styles.th} ${styles.cDoor}`} title="When the token graduated (this tab's order)">
+              Graduated
+            </div>
+          ) : (
+            th("door", "To graduation", styles.cDoor, "Sort by progress to graduation")
+          )}
+          {th("holders", "Holders", styles.cIn, "Sort by holders")}
+          {th("vol", "Vol 24h", styles.cVol, "Sort by ETH traded in the last 24 h")}
           <div role="columnheader" className={styles.cStar}>
             <span className={styles.sr}>Pin</span>
           </div>
@@ -1201,61 +1132,19 @@ export default function Launches({ initial: served, board: servedBoard, home = f
               const pct = c.progressBps / 100;
               const f = flash[c.token];
               const pinned = watch.includes(c.token);
-              const vol = period === "1h" ? c.volume1hEth : c.volume24hEth;
-              const e = eta(c.etaHours);
+              const vol = c.volume24hEth;
               const title = `$${c.symbol || "???"}`;
-              const dup = dupOf(c);
               const stale = staleSince(c);
               const d = tab === "watch" && baseline ? deltaOf(c, baseline[c.token]) : null;
               const since = tab === "watch" && baseline ? sinceText(d, now) : null;
               const parts = d ? sinceParts(d) : [];
-              const ageS = now !== null && c.createdAt ? Math.max(0, now / 1000 - c.createdAt) : null;
-              const fresh = ageS !== null && ageS < 30 * 60;
-              const devN = devCount.get(c.creator) ?? 0;
-              const early = tab === "new" ? earlyText(c, ageS) : null;
               const ageTxt = now !== null && c.createdAt ? age(c.createdAt, now) : null;
-              // the meta line under the ticker: name · age, then the free flags as words (no boxes)
-              const meta: React.ReactNode[] = [];
-              if (tab === "new" && ageTxt)
-                meta.push(
-                  <span key="age" className={fresh ? styles.hiGood : styles.hi} title={`Launched ${ageTxt} ago`}>
-                    {ageTxt}
-                  </span>,
-                );
-              meta.push(<span key="name">{c.name}</span>);
-              if (tab !== "new" && ageTxt) meta.push(<span key="age">{ageTxt}</span>);
-              const sp = spark.get(c.token);
-              // a v6 row under an hour old: its B/S 1h column already says the same thing
-              const earlyDup = !!c.v6 && sp?.buys1h !== undefined && ageS !== null && ageS < 3_600;
-              if (early && !earlyDup) meta.push(<span key="early" className={early.hot ? styles.hiGood : undefined}>{early.text}</span>);
+              // the sub-line, fixed slots in a fixed order: name · age · one flag. The flag is the grade's top reason
+              // (screen() lists the worst first), only when it is a warning or worse; no grade yet, no flag
               const sr = graded.get(c.token.toLowerCase());
-              // the screener's worst reason leads the meta line; the old v1 signal grade only when not screened
-              const worst = sr?.reasons.find((x) => x.level !== "good");
-              if (worst)
-                meta.splice(tab === "new" && ageTxt ? 1 : 0, 0,
-                  <span key="worst" className={worst.level === "bad" ? styles.hiBad : styles.hiWarn}>
-                    {worst.text}
-                  </span>,
-                );
-              if (devN >= 2)
-                meta.push(
-                  <span key="dev" className={styles.hi} title={`This creator (${shortAddr(c.creator)}) launched ${devN} tokens on this list.`}>
-                    dev ×{devN}
-                  </span>,
-                );
-              if (dup)
-                meta.push(
-                  <span key="clone" className={styles.hiBad} title={`An older token already uses ${title} (${shortAddr(dup.token)}). Only the first one is the original: check the contract.`}>
-                    clone
-                  </span>,
-                );
-              if (c.v6)
-                meta.push(
-                  <span key="tax" className={styles.hi} title={`Taxed v6 launch: ${c.v6.taxBps === null ? "tax unknown" : `${taxText(c.v6.taxBps)} on every trade`}, paired with ${c.v6.pair}. Line ranked by bag.`}>
-                    {taxText(c.v6.taxBps)}
-                    {c.v6.pair !== "ETH" ? ` · ${c.v6.pair} pair` : ""}
-                  </span>,
-                );
+              const top = sr?.grade ? sr.reasons[0] : undefined;
+              const flag = top && (top.level === "bad" || top.level === "warn") ? top : null;
+              const sp = spark.get(c.token);
               const spv = sparkFor(sp, period);
               const chg = sparkChg(spv);
               const chgCls = chg === null || flatBps(chg) ? styles.unk : chg > 0 ? styles.up : styles.down;
@@ -1270,28 +1159,24 @@ export default function Launches({ initial: served, board: servedBoard, home = f
                   onPointerLeave={unwarm}
                   onPointerDown={() => warmNow(c, pre) /* a tap: start at once, the click follows in ~100 ms */}
                 >
-                  <div role="cell" className={`${styles.num} ${styles.cRank} ${styles.rank}`}>{i + 1}</div>
                   <div role="cell" className={styles.cTok}>
                     <Link
                       className={styles.tok}
                       href={`/line/${c.token}`}
                       prefetch={false}
                       onFocus={() => warm(c, pre)}
-                      aria-label={`${title}, ${c.name}: open the token page${c.v6 ? " (taxed v6 launch, ranked by bag)" : ""}${since ? `. ${since}` : ""}`}
+                      aria-label={`${title}, ${c.name}${ageTxt ? `, ${ageTxt} old` : ""}${sr?.grade ? `, grade ${sr.grade}` : ""}${flag ? `: ${flag.text}` : ""}. Open the token page${since ? `. ${since}` : ""}`}
                     >
-                      <GradeBadge grade={sr?.grade ?? null} size="sm" title={sr?.grade ? `Grade ${sr.grade}: ${sr.reasons.map((x) => x.text).join(" · ") || "no flags"}` : VERDICT_LABEL.unknown} />
+                      <GradeBadge grade={sr?.grade ?? null} noGrade={sr?.metrics.noGrade} size="sm" title={sr?.grade ? `Grade ${sr.grade}, ${standingWord(sr.grade)} (${coverageWord(sr.metrics.coverage)}): ${sr.reasons.map((x) => x.text).join(" · ") || "no flags"}` : standingWord(null, sr?.metrics.noGrade)} />
                       <span className={styles.logo}>
                         <TokenAvatar src={c.image} symbol={c.symbol} size={28} /* lazy: an eager logo becomes a <link rel=preload> on every page that prefetched "/" */ />
                       </span>
                       <span className={styles.names}>
                         <b className={styles.sym}>{title}</b>
                         <small className={styles.meta}>
-                          {meta.map((m, k) => (
-                            <span key={k}>
-                              {k > 0 && <span className={styles.sep}> · </span>}
-                              {m}
-                            </span>
-                          ))}
+                          <span className={styles.mName}>{c.name || "—"}</span>
+                          {ageTxt && <span className={styles.mAge} title={`Launched ${ageTxt} ago`}>{ageTxt}</span>}
+                          {flag && <span className={`${styles.mFlag} ${flag.level === "bad" ? styles.hiBad : styles.hiWarn}`}>{flag.text}</span>}
                         </small>
                         {since !== null && (
                           <small className={styles.since} title={since}>
@@ -1320,70 +1205,47 @@ export default function Launches({ initial: served, board: servedBoard, home = f
                   </div>
                   <div role="cell" className={styles.cDoor}>
                     {c.graduated ? (
-                      <span className={styles.grad}>
-                        <i aria-hidden />
-                        Graduated
-                      </span>
-                    ) : (
-                      <>
-                        <span className={styles.doorTop}>
-                          <span className={styles.meter} aria-hidden>
-                            <i className={pct >= 85 ? styles.meterHot : undefined} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
-                          </span>
-                          <span className={`${styles.pct} ${pct >= 60 ? styles.hot : ""}`}>{pctText(c.progressBps)}</span>
+                      // the Graduated tab: every row graduated, so the cell says when; elsewhere a quiet label
+                      tab === "grad" ? (
+                        <span className={styles.grad} title={c.graduatedAt ? `Graduated ${new Date(c.graduatedAt * 1000).toLocaleString()}` : "Graduation time unknown"}>
+                          <span className={styles.mobOnly}>Graduated </span>
+                          {c.graduatedAt && now !== null ? `${age(c.graduatedAt, now)} ago` : "—"}
                         </span>
-                        {e ? (
-                          <small className={styles.eta} title="ETA to 5 ETH at the current pace (the slower of 24 h and the last hour).">
-                            <Term id="eta">{e}</Term>
-                          </small>
-                        ) : c.etaStalled ? (
-                          // "stalled" only when nobody bought this hour; buys over a flat or draining day read "slow"
-                          <small className={styles.eta} title={c.buys1h ? "Buys this hour, but net inflow is flat, draining or far below the day's pace: no ETA." : "No buys in the last hour: no ETA."}>
-                            <Term id="stalled">{c.buys1h ? "slow" : "stalled"}</Term>
-                          </small>
-                        ) : null}
-                      </>
+                      ) : (
+                        <span className={styles.grad}>Graduated</span>
+                      )
+                    ) : (
+                      <span className={styles.doorTop} title={`${pctText(c.progressBps)} of the way to graduation`}>
+                        <span className={styles.meter} aria-hidden>
+                          <i className={pct >= 85 ? styles.meterHot : undefined} style={{ width: `${Math.max(0, Math.min(100, pct))}%` }} />
+                        </span>
+                        <span className={styles.pct}>{pctText(c.progressBps)}</span>
+                      </span>
                     )}
                   </div>
-                  <div role="cell" className={`${styles.num} ${styles.cIn} ${c.holders === null ? styles.unk : ""}`} title={c.holders === null ? "Unknown, not zero." : undefined}>
-                    {nf(c.holders)}
-                  </div>
+                  {(() => {
+                    // real holders (bought in, more than dust) once the grade has read them; vibe's raw count until then
+                    const real = sr && sr.metrics.holdersAll !== undefined && sr.metrics.holders !== null ? sr.metrics.holders : null;
+                    const raw = real !== null ? sr!.metrics.holdersAll ?? c.holders : c.holders;
+                    const tip = real !== null
+                      ? raw !== null && raw > real ? `${real.toLocaleString("en-US")} real holders; ${raw.toLocaleString("en-US")} incl. ${(raw - real).toLocaleString("en-US")} airdropped or dust` : "Real holders: bought in and hold more than dust"
+                      : c.holders === null ? "Unknown, not zero." : undefined;
+                    const n = real ?? c.holders;
+                    return (
+                      <div role="cell" className={`${styles.num} ${styles.cIn} ${n === null ? styles.unk : ""}`} title={tip}>
+                        {nf(n)}
+                      </div>
+                    );
+                  })()}
                   <div
                     role="cell"
                     className={`${styles.num} ${styles.cVol} ${vol === null || vol === 0 ? styles.unk : ""}`}
                     title={c.v6 && c.v6.pair !== "ETH" ? `Traded in ${c.v6.pair}: no ETH volume to show` : vol === null ? "Unknown, not zero." : undefined}
                   >
                     {eth(vol)}
-                  </div>
-                  <div role="cell" className={`${styles.num} ${styles.cBs}`}>
-                    {c.buys1h === null && c.sells1h === null ? (
-                      <span className={styles.unk} title="No 1h window for this launch: unknown, not zero.">—</span>
-                    ) : (
-                      <span className={styles.bs} title={`${c.buys1h ?? "—"} buys / ${c.sells1h ?? "—"} sells in the last hour`}>
-                        {c.buys1h ?? "—"}
-                        <span className={styles.slash}>/</span>
-                        {c.sells1h ?? "—"}
-                      </span>
-                    )}
+                    {/* phones have no column head: the unit and window ride along */}
+                    {vol !== null && <span className={styles.volUnit}> ETH 24h</span>}
                     {f ? <i className={styles.bump}>{f < 0 ? "new" : `+${f}`}</i> : null}
-                  </div>
-                  {/* phones: holders, volume and B/S as one plain line under the progress */}
-                  <div role="cell" className={styles.cMob} aria-hidden>
-                    <span>{nf(c.holders)} {c.holders === 1 ? "holder" : "holders"}</span>
-                    {vol !== null && (
-                      <>
-                        <span className={styles.sep}> · </span>
-                        <span>{eth(vol)} ETH {period}</span>
-                      </>
-                    )}
-                    {c.buys1h !== null || c.sells1h !== null ? (
-                      <>
-                        <span className={styles.sep}> · </span>
-                        <span>
-                          {c.buys1h ?? "—"}/{c.sells1h ?? "—"} 1h
-                        </span>
-                      </>
-                    ) : null}
                   </div>
                   <div role="cell" className={styles.cStar}>
                     <button
@@ -1406,7 +1268,6 @@ export default function Launches({ initial: served, board: servedBoard, home = f
 
         {stubs.map((t) => (
           <div key={t} role="row" className={`${styles.row} ${styles.stub}`}>
-            <div role="cell" className={`${styles.num} ${styles.cRank} ${styles.rank}`}>·</div>
             <div role="cell" className={styles.cTok}>
               <span className={styles.names}>
                 <b className={styles.addr}>{shortAddr(t)}</b>

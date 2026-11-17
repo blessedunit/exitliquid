@@ -9,6 +9,7 @@ import type { TokenSignal } from "@/lib/signals";
 import { healthChips } from "@/lib/healthChips";
 import { SNIPERS_MEDIUM } from "@/lib/health";
 import type { FilterId } from "./state";
+import { isFullCheck, type ScreenerRow } from "@/lib/screener-types";
 
 export type { TokenSignal, FilterId };
 /** absent = not asked (outside the window); "loading" = first ask in flight; "error" = the call failed */
@@ -163,7 +164,7 @@ export const gradeTone = (g: string): Tone => (g === "A" || g === "B" ? "good" :
 
 /** the tooltip of a graded cell: what was read, and what wasn't */
 export function sigTitle(s: TokenSignal): string {
-  const parts: string[] = [`Line Health ${s.grade} (${s.score}/100), quick check from the first ${s.firstBuyers} buyers and the dev wallet.`];
+  const parts: string[] = [`Front check ${s.grade} (${s.score}/100), quick check from the first ${s.firstBuyers} buyers and the dev wallet.`];
   if (s.reasons.length) parts.push(s.reasons.map((r) => r.label).join(" · ") + ".");
   else parts.push("No warning signs at the front.");
   if (s.dev?.holdsBps !== null && s.dev?.holdsBps !== undefined) parts.push(s.dev.holdsBps > 0 ? `Dev holds ${pctBps(s.dev.holdsBps)} of supply.` : "Dev holds none.");
@@ -177,8 +178,8 @@ export function sigTitle(s: TokenSignal): string {
 /** the SHOW ONLY chips (ids unchanged: shared ?f= links keep working). soon/fresh stay valid ids with no chip:
  * they duplicate the Near graduation / New tabs, and a link that carries one shows a removable pill instead. */
 export const FILTERS: { id: FilterId; label: string; title: string; needsSignals: boolean }[] = [
-  { id: "clean", label: "Grade A–B", title: "Line Health A or B with every input read.", needsSignals: true },
-  { id: "nosnipe", label: `Under ${SNIPER_OK} snipers`, title: `Fewer than ${SNIPER_OK} known sniper bots in the first 20 buyers (${SNIPER_OK}+ is a warning in Line Health).`, needsSignals: true },
+  { id: "clean", label: "Grade A–B", title: "Grade A or B on a full check (no red flags found, or minor flags only).", needsSignals: true },
+  { id: "nosnipe", label: `Under ${SNIPER_OK} snipers`, title: `Fewer than ${SNIPER_OK} known sniper bots in the first 20 buyers (${SNIPER_OK}+ is a warning at the front of the line).`, needsSignals: true },
   { id: "dev", label: "Dev never sold", title: "The creator never sold and still holds some supply.", needsSignals: true },
 ];
 /** the one rule every chip follows, said once (chip tooltips, the sheet, the legend) */
@@ -192,7 +193,7 @@ export const LEGACY_FILTERS: { id: FilterId; label: string; title: string }[] = 
 const sigOf = (e: SigEntry | undefined): TokenSignal | null => (e && typeof e !== "string" ? e : null);
 
 /** true = passes, false = fails, null = can't tell yet (signals unknown or still loading) */
-export function passes(f: FilterId, c: Card, e: SigEntry | undefined, nowSec: number | null): boolean | null {
+export function passes(f: FilterId, c: Card, e: SigEntry | undefined, nowSec: number | null, g?: ScreenerRow | null, useGrades = false): boolean | null {
   const s = sigOf(e);
   switch (f) {
     case "soon":
@@ -200,6 +201,13 @@ export function passes(f: FilterId, c: Card, e: SigEntry | undefined, nowSec: nu
     case "fresh":
       return nowSec === null || !c.createdAt ? null : nowSec - c.createdAt < 3_600;
     case "clean":
+      // the site's one grade (the screener's row) when the board has it: A/B on a Full check only. No row yet, too
+      // new, unread or waiting for a re-check: can't tell. Too thin to grade: not A/B, so it fails
+      if (useGrades) {
+        if (!g) return null;
+        if (g.grade) return (g.grade === "A" || g.grade === "B") && isFullCheck(g.metrics.coverage);
+        return g.metrics.noGrade === "thin" ? false : null;
+      }
       if (c.v6) return false; // no Line Health for v6 curves: never "clean" by proof
       if (!s || s.status === "unknown") return null;
       return s.status === "ok" && (s.grade === "A" || s.grade === "B") && !s.partial;
@@ -218,14 +226,14 @@ export function passes(f: FilterId, c: Card, e: SigEntry | undefined, nowSec: nu
 // "unchecked" = a row outside the signals window that nobody will ask about: hidden, but never "still checking"
 const unchecked = (c: Card, sig: SigMap, asked?: ReadonlySet<string>) => !!asked && !c.v6 && !asked.has(c.token) && !sig.has(c.token);
 
-export function applyFilters(rows: Card[], fs: FilterId[], sig: SigMap, nowSec: number | null, asked?: ReadonlySet<string>): { rows: Card[]; unknown: number; unchecked: number } {
+export function applyFilters(rows: Card[], fs: FilterId[], sig: SigMap, nowSec: number | null, asked?: ReadonlySet<string>, grades?: ReadonlyMap<string, ScreenerRow>): { rows: Card[]; unknown: number; unchecked: number } {
   if (!fs.length) return { rows, unknown: 0, unchecked: 0 };
   let unknown = 0;
   let skipped = 0;
   const out = rows.filter((c) => {
     let pend = false;
     for (const f of fs) {
-      const p = passes(f, c, sig.get(c.token), nowSec);
+      const p = passes(f, c, sig.get(c.token), nowSec, grades?.get(c.token.toLowerCase()), !!grades);
       if (p === false) return false;
       if (p === null) pend = true;
     }
@@ -239,14 +247,14 @@ export function applyFilters(rows: Card[], fs: FilterId[], sig: SigMap, nowSec: 
 }
 
 /** what each chip would keep, before it is clicked: pass = rows that pass it alone, unknown = rows it can't tell yet */
-export function countFilters(rows: Card[], sig: SigMap, nowSec: number | null, asked?: ReadonlySet<string>): Record<FilterId, { pass: number; unknown: number; unchecked: number }> {
+export function countFilters(rows: Card[], sig: SigMap, nowSec: number | null, asked?: ReadonlySet<string>, grades?: ReadonlyMap<string, ScreenerRow>): Record<FilterId, { pass: number; unknown: number; unchecked: number }> {
   const out = {} as Record<FilterId, { pass: number; unknown: number; unchecked: number }>;
   for (const f of ["clean", "nosnipe", "dev", "soon", "fresh"] as FilterId[]) out[f] = { pass: 0, unknown: 0, unchecked: 0 };
   for (const c of rows) {
     const e = sig.get(c.token);
     const skip = unchecked(c, sig, asked);
     for (const f of Object.keys(out) as FilterId[]) {
-      const p = passes(f, c, e, nowSec);
+      const p = passes(f, c, e, nowSec, grades?.get(c.token.toLowerCase()), !!grades);
       if (p === true) out[f].pass++;
       else if (p === null) {
         if (skip) out[f].unchecked++;
